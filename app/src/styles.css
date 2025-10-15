@@ -1,0 +1,57 @@
+:root{
+  /* Increased contrast theme */
+  --bg: #030610; /* darker page background */
+  --card: #0e2a3a; /* lighter card to pop against bg */
+  --muted: #9fb0c8;
+  --accent: #8b5cf6; /* stronger violet */
+  --accent-2: #38bdf8; /* brighter sky */
+  --surface: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.008));
+}
+*{box-sizing:border-box}
+html,body,#app{height:100%}
+body{
+  margin:0;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  /* slightly stronger accent and darker base for contrast */
+  background: radial-gradient(1200px 600px at 10% 10%, rgba(139,92,246,0.16), transparent), var(--bg);
+  color: #eaf6ff; /* brighter text for readability */
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+.app-shell{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:2rem;
+}
+.card{
+  width:100%;
+  max-width:520px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.006)), var(--card);
+  border-radius:12px;
+  padding:1.5rem;
+  /* stronger shadow and slightly brighter border to increase separation */
+  box-shadow: 0 14px 40px rgba(2,6,23,0.72);
+  border: 1px solid rgba(255,255,255,0.045);
+}
+.muted{color:var(--muted)}
+.btn{
+  background: linear-gradient(90deg,var(--accent),var(--accent-2));
+  color: #fff;
+  padding:0.6rem 1rem;
+  border-radius:8px;
+  border:none;
+  cursor:pointer;
+  font-weight:700;
+  box-shadow: 0 6px 18px rgba(59,40,80,0.35);
+}
+.input{
+  width:100%;
+  padding:0.6rem;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color:#fbfeff;
+}
+.form-row{margin-bottom:0.75rem}
