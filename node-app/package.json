@@ -1,0 +1,12 @@
+{
+  "name": "minimal-node-app",
+  "version": "1.0.0",
+  "description": "A minimal Node.js HTTP app with tests",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/test.js"
+  },
+  "author": "",
+  "license": "MIT"
+}

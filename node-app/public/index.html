@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>User Logger</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      input { padding: 8px; font-size: 14px }
+      button { padding: 8px 12px; margin-left: 8px }
+      pre { background: #f6f6f6; padding: 12px }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script>
+      const e = React.createElement;
+
+      function App() {
+        const [name, setName] = React.useState('');
+        const [logs, setLogs] = React.useState([]);
+        const [status, setStatus] = React.useState('');
+
+        async function fetchLogs() {
+          const r = await fetch('/logs');
+          const j = await r.json();
+          setLogs(j);
+        }
+
+        React.useEffect(() => { fetchLogs(); }, []);
+
+        async function submit() {
+          setStatus('sending...');
+          try {
+            const r = await fetch('/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: name }) });
+            if (r.status === 201) {
+              setStatus('logged');
+              setName('');
+              fetchLogs();
+            } else {
+              setStatus('error');
+            }
+          } catch (err) {
+            setStatus('error');
+          }
+        }
+
+        return e('div', null,
+          e('h1', null, 'User Logger'),
+          e('div', null,
+            e('input', { placeholder: 'Enter user name', value: name, onChange: (ev) => setName(ev.target.value) }),
+            e('button', { onClick: submit }, 'Log User')
+          ),
+          e('div', { style: { marginTop: 10 } }, e('strong', null, 'Status: '), status),
+          e('h2', { style: { marginTop: 20 } }, 'Recent Logs'),
+          e('pre', null, JSON.stringify(logs, null, 2))
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(e(App));
+    </script>
+  </body>
+</html>
