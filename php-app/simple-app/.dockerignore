@@ -1,0 +1,7 @@
+vendor
+node_modules
+data/notes.json
+data/users.json
+.git
+.env
+*.log
