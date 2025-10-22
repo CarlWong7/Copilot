@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: copilot-vue-app:latest
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    volumes:
+      - ./:/app:ro
+    environment:
+      - NODE_ENV=production

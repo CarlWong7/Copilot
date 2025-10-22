@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  node-app:
+    build: ./node-app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  php-app:
+    build: ./php-app
+    ports:
+      - "3003:80"
+    restart: unless-stopped
+
+  react-app:
+    build: ./react-app
+    ports:
+      - "3001:80"
+    restart: unless-stopped
+
+  vue-app:
+    build: ./vue-app
+    ports:
+      - "3002:80"
+    restart: unless-stopped
