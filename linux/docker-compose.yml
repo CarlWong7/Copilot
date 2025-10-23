@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  api:
+    build: .
+    image: pdf2csv-api:latest
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # helper service for one-off conversions using the same image
+  convert:
+    build: .
+    image: pdf2csv-api:latest
+    entrypoint: ["/app/pdf2csv.sh"]
+    volumes:
+      - ./:/data
+    working_dir: /data
