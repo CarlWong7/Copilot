@@ -2,7 +2,9 @@ FROM python:3.11-slim
 
 # Install poppler (pdftotext) and other small deps
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends poppler-utils \
+    && apt-get install -y --no-install-recommends \
+       poppler-utils \
+       curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

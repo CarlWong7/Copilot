@@ -312,21 +312,78 @@ else:
     except Exception:
       continue
 
-# Pre-process raw_lines: split any lines that contain multiple verse markers
-# (e.g., "1 In the beginning... 2 Now the earth...") into separate lines
-# that start with the verse number. This prevents a single CSV DESCRIPTION
-# from containing multiple verses collapsed into one long paragraph.
+# Truncate raw_lines early to limit processing for faster runs. This keeps the
+# parser from scanning the whole document when you only need a quick sample.
+# Adjust MAX_LINES as needed (set to 0 to disable truncation).
+MAX_LINES = 1000
+if MAX_LINES and len(raw_lines) > MAX_LINES:
+  # preserve order but only keep the first MAX_LINES lines
+  raw_lines = raw_lines[:MAX_LINES]
+
+# Pre-process raw_lines: split lines that contain multiple verse-like markers
+# while avoiding false splits on dates, footnotes or numeric ranges. The
+# heuristic below treats a number as a verse marker when it appears at the
+# start of the line or is preceded by whitespace/punctuation and is followed
+# by whitespace and then a letter or an opening quote/paren (typical verse
+# starts). This reduces incorrect splits compared with splitting on any
+# digit sequence.
 processed_lines = []
-verse_split_re = re.compile(r'(?=(?:\b\d{1,3}\b))')
+# regex to find candidate numeric tokens (1..3 digits)
+split_candidate_re = re.compile(r'(\d{1,3})\b')
 for rl in raw_lines:
   s = rl.strip()
   if not s:
     continue
-  # If the line contains more than one standalone verse number, split it
-  # into multiple lines starting at each verse number.
+
+  # quick check: if there are fewer than 2 numeric tokens, nothing to do
   numbers = re.findall(r'\b\d{1,3}\b', s)
-  if len(numbers) >= 2:
-    parts = [p.strip() for p in verse_split_re.split(s) if p.strip()]
+  if len(numbers) < 2:
+    processed_lines.append(s)
+    continue
+
+  parts = []
+  last_idx = 0
+  # iterate over candidate number matches and decide whether each is a
+  # plausible verse marker; when it is, start a new segment there.
+  for m in split_candidate_re.finditer(s):
+    start = m.start()
+    end = m.end()
+
+    # character(s) before/after the number
+    pre = s[start-1] if start-1 >= 0 else ''
+
+    # Look ahead a short distance to allow for an optional punctuation
+    # character (e.g., "10.") before the whitespace and verse text.
+    look = s[end:end+6]
+
+    # Heuristic checks:
+    is_at_start = (start == 0)
+    pre_ok = (pre == '' or pre.isspace() or pre in '([{\-–—:;,.' )
+    pre_is_lower = (pre.isalpha() and pre.islower())
+
+    # Post must (after optional punctuation) contain whitespace then an
+    # uppercase letter (verse starts are typically capitalized). This
+    # avoids splitting inside sentences where numbers may appear mid-line.
+    post_ok = bool(re.match(r'^[\.\:\,\)\]\s]*\s*["“\'\(\[]?[A-Z]', look))
+
+    # Accept as a verse marker only when at line start, or when preceded by
+    # punctuation/space (not a lowercase letter) AND the post-check matches.
+    if is_at_start or (pre_ok and not pre_is_lower and post_ok):
+      if last_idx < start:
+        segment = s[last_idx:start].strip()
+        if segment:
+          parts.append(segment)
+      last_idx = start
+
+  # append the remaining tail (or the whole string if no markers accepted)
+  if last_idx < len(s):
+    tail = s[last_idx:].strip()
+    if tail:
+      parts.append(tail)
+
+  # If heuristic produced at least two parts, use them; otherwise fall back
+  # to the original line to avoid accidental corruption.
+  if len(parts) >= 2:
     processed_lines.extend(parts)
   else:
     processed_lines.append(s)
@@ -416,6 +473,33 @@ while i < len(processed_lines):
       # likely a page number or other marker; skip
       continue
 
+  # Detect 'chapter:verse' patterns first (e.g., '3:16 In the beginning')
+  m_cv = re.match(r'^(\d{1,3})[:\.\-]\s*(\d{1,3})(?:\s+(.*))?$', line)
+  if m_cv:
+    chap = m_cv.group(1)
+    verse = m_cv.group(2)
+    desc = normalize_space(m_cv.group(3) or '')
+    # set current chapter from explicit marker
+    current_chapter = chap
+    # If the description looks like a heading/TOC, skip it until started
+    if is_description_heading(desc) or sum(1 for t in re.findall(r"[a-z0-9]+", desc.lower()) if t in BOOKS_TOKENS) >= 2:
+      if not started:
+        preface.append(line)
+      continue
+    if not current_book:
+      k = max(0, i-6)
+      bf = find_book_anywhere(processed_lines[k:i])
+      if bf:
+        current_book = bf
+    if not current_book and not started:
+      preface.append(line)
+      continue
+    started = True
+    preface = []
+    rows.append([current_book, current_chapter, verse, desc])
+    last_row = rows[-1]
+    continue
+
   # Detect verse number at start (e.g., '1 In the beginning' or '1In the beginning')
   m_v = re.match(r'^(\d{1,3})\s*(.*)$', line)
   if m_v and m_v.group(2).strip():
@@ -487,53 +571,103 @@ while i < len(processed_lines):
     rows.append(['', '', '', normalize_space(line)])
     last_row = rows[-1]
 
-with open(csv_path, 'w', newline='', encoding='utf-8') as cf:
-  writer = csv.writer(cf, quoting=csv.QUOTE_MINIMAL)
-  writer.writerow(['BOOK', 'CHAPTER', 'VERSE', 'DESCRIPTION'])
-  # Post-process rows to assign chapter/verse counters when originals are
-  # missing or when a deterministic sequential numbering is desired.
-  # Behavior implemented here:
-  # - chapter_counter increments when we detect an explicit chapter marker
-  #   (either an original chapter value present, or a DESCRIPTION that begins
-  #   with the word 'chapter' + number). When chapter_counter increments,
-  #   verse_counter resets to 1.
-  # - verse_counter increments by 1 for each output row and is used to set
-  #   the VERSE field (overriding parsed values). This gives a stable, simple
-  #   numbering across the exported CSV.
-  chapter_counter = 1
-  verse_counter = 1
-  last_seen_original_chapter = None
-  for r in rows:
-    # normalize description
-    r[3] = normalize_space(r[3]) if r[3] else ''
+  with open(csv_path, 'w', newline='', encoding='utf-8') as cf:
+    writer = csv.writer(cf, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(['BOOK', 'CHAPTER', 'VERSE', 'DESCRIPTION'])
+    # Post-process rows to preserve detected chapter numbers and fill
+    # missing verse numbers sequentially within each chapter. Behavior:
+    # - If a row has an explicit numeric chapter, use that and reset verse
+    #   numbering for the chapter.
+    # - If a row has an explicit numeric verse, use it and set the next
+    #   verse counter accordingly.
+    # - Otherwise assign incremental verses within the current chapter.
+    last_chapter = None
+    verse_counter = 1
+    # fallback sequential chapter counter when explicit chapters aren't found
+    chapter_counter = 1
+    last_book_name = None
+    # Track last assigned verse to detect resets which imply a chapter change
+    last_assigned_verse = None
+    for r in rows:
+      # normalize description
+      r[3] = normalize_space(r[3]) if r[3] else ''
 
-    # detect explicit chapter markers in the parsed fields or description
-    explicit_ch = None
-    if r[1]:
-      try:
-        explicit_ch = int(re.sub(r"[^0-9]", "", r[1]))
-      except Exception:
-        explicit_ch = None
-    else:
-      mch = re.match(r'^chapter\s+(\d{1,3})', r[3], re.I)
-      if mch:
-        explicit_ch = int(mch.group(1))
+      # reset chapter counter when book changes
+      if r[0] and r[0] != last_book_name:
+        last_book_name = r[0]
+        chapter_counter = 1
+        last_chapter = None
+        verse_counter = 1
+        last_assigned_verse = None
 
-    # if we see a new explicit chapter (different from last seen), bump counters
-    if explicit_ch is not None and explicit_ch != last_seen_original_chapter:
-      chapter_counter = chapter_counter + 1 if last_seen_original_chapter is not None else chapter_counter
-      last_seen_original_chapter = explicit_ch
-      verse_counter = 1
+      # detect explicit chapter in field or leading description
+      explicit_ch = None
+      if r[1]:
+        mch = re.search(r"(\d{1,3})", r[1])
+        if mch:
+          explicit_ch = int(mch.group(1))
+      # also accept 'Chapter N' or a bare leading 'N' at the start of DESCRIPTION
+      if explicit_ch is None and r[3]:
+        mch = re.match(r'^chapter\s+(\d{1,3})', r[3], re.I)
+        if mch:
+          explicit_ch = int(mch.group(1))
+          # remove the 'Chapter N' prefix from description
+          r[3] = re.sub(r'(?i)^chapter\s+\d{1,3}[:.\-\s]*', '', r[3]).strip()
+        else:
+          # bare number at start of description likely indicates chapter
+          mch2 = re.match(r'^(\d{1,3})\b[:.\-\s]*(.*)$', r[3])
+          if mch2:
+            explicit_ch = int(mch2.group(1))
+            r[3] = mch2.group(2).strip()
 
-    # assign the computed chapter and verse
-    r[1] = str(chapter_counter)
-    r[2] = str(verse_counter)
-    verse_counter += 1
+      if explicit_ch is not None:
+        last_chapter = explicit_ch
+        chapter_counter = explicit_ch
+        verse_counter = 1
+        last_assigned_verse = None
 
-    # remove leading 'Chapter N' from description if present
-    r[3] = re.sub(r'(?i)^chapter\s+\d{1,3}[:.\-\s]*', '', r[3]).strip()
+      # detect explicit verse if present
+      explicit_verse = None
+      if r[2]:
+        mv = re.search(r"(\d{1,3})", r[2])
+        if mv:
+          explicit_verse = int(mv.group(1))
 
-    writer.writerow(r)
+      # If verse numbers are present and appear to reset/decrease, treat as new chapter
+      if explicit_verse is not None:
+        if last_assigned_verse is not None and explicit_verse <= last_assigned_verse:
+          # verse restarted: assume a new chapter
+          chapter_counter = (last_chapter + 1) if last_chapter is not None else chapter_counter + 1
+          last_chapter = chapter_counter
+          verse_counter = explicit_verse + 1
+        else:
+          verse_counter = explicit_verse + 1
+        last_assigned_verse = explicit_verse
+
+      # assign chapter: prefer explicit, then last seen, else use running counter
+      if explicit_ch is not None:
+        r[1] = str(explicit_ch)
+      elif last_chapter is not None:
+        r[1] = str(last_chapter)
+      else:
+        r[1] = str(chapter_counter)
+
+      # assign verse: explicit if present, else increment from last_assigned_verse
+      if explicit_verse is not None:
+        r[2] = str(explicit_verse)
+      else:
+        # no explicit verse: increment sequentially
+        if last_assigned_verse is None:
+          r[2] = str(verse_counter)
+        else:
+          r[2] = str(last_assigned_verse + 1)
+          last_assigned_verse = int(r[2])
+        verse_counter = int(r[2]) + 1
+
+      # remove leading 'Chapter N' from description if present
+      r[3] = re.sub(r'(?i)^chapter\s+\d{1,3}[:.\-\s]*', '', r[3]).strip()
+
+      writer.writerow(r)
 
 print(f"Wrote: {csv_path}")
 PY
