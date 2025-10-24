@@ -44,3 +44,48 @@ Improvements you might add
 - Improve grouping of multi-line descriptions (merge lines belonging to
   the same verse).
 - Support output to a single combined CSV for multiple PDFs.
+
+Docker / API
+------------
+
+This repository includes a small Flask API and a Dockerfile that packages the
+`pdf2csv.sh` script so you can run it as a service. The service exposes:
+
+- GET /health — returns a small JSON health object
+- POST /convert — accepts a PDF file upload (form field `file`) and returns a
+  CSV file produced by `pdf2csv.sh`.
+
+Build and run with docker-compose (requires Docker):
+
+```powershell
+# from repository root
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+Test the health endpoint (PowerShell):
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:8080/health
+# => {"status":"ok"}
+```
+
+Upload a PDF and download the CSV (PowerShell):
+
+```powershell
+$resp = Invoke-RestMethod -Uri http://localhost:8080/convert -Method Post -InFile .\sample.pdf -ContentType 'multipart/form-data' -OutFile sample.csv
+```
+
+Or using curl (Linux / macOS / WSL):
+
+```bash
+curl -F "file=@sample.pdf" http://localhost:8080/convert -o sample.csv
+```
+
+Notes:
+
+- The container image includes `pdftotext` (poppler) and Python dependencies from
+  `requirements.txt`. If your PDFs are scanned images you will need an OCR step
+  (Tesseract) before conversion.
+- The `pdf2csv.sh` script is copied to `/app/pdf2csv.sh` inside the container and
+  executed by the Flask endpoint. Ensure uploaded files are valid PDFs.

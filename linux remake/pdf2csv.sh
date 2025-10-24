@@ -57,16 +57,57 @@ process_pdf() {
 
   echo "Converting '$pdf' -> '$out_csv'..."
 
-  # extract text (preserve layout as best-effort)
-  pdftotext -layout "$pdf" "$out_txt"
+  # Attempt two-pass extraction for two-column layouts: use pdfinfo to get
+  # page dimensions and run pdftotext twice (left / right halves). If pdfinfo
+  # isn't available or the region extraction fails, fall back to a single
+  # full-page extraction.
+  out_txt_left="${out_txt%.txt}_left.txt"
+  out_txt_right="${out_txt%.txt}_right.txt"
+  out_txts=()
 
+  if command -v pdfinfo >/dev/null 2>&1; then
+    # pdfinfo prints a line like: "Page size: 612 x 792 pts"
+    page_size_line=$(pdfinfo "$pdf" 2>/dev/null | awk -F': ' '/Page size/{print $2; exit}') || true
+    if [[ -n "$page_size_line" ]]; then
+      pw=$(echo "$page_size_line" | awk '{print int($1)}') || pw=0
+      ph=$(echo "$page_size_line" | awk '{print int($3)}') || ph=0
+      if [[ $pw -gt 0 && $ph -gt 0 ]]; then
+        half=$((pw/2))
+        # extract left and right halves; if these succeed we'll parse both
+        pdftotext -layout -x 0 -y 0 -W "$half" -H "$ph" "$pdf" "$out_txt_left" 2>/dev/null || true
+        pdftotext -layout -x "$half" -y 0 -W "$half" -H "$ph" "$pdf" "$out_txt_right" 2>/dev/null || true
+        if [[ -s "$out_txt_left" && -s "$out_txt_right" ]]; then
+          out_txts=("$out_txt_left" "$out_txt_right")
+        else
+          pdftotext -layout "$pdf" "$out_txt" || true
+          out_txts=("$out_txt")
+        fi
+      else
+        pdftotext -layout "$pdf" "$out_txt" || true
+        out_txts=("$out_txt")
+      fi
+    else
+      pdftotext -layout "$pdf" "$out_txt" || true
+      out_txts=("$out_txt")
+    fi
+  else
+    pdftotext -layout "$pdf" "$out_txt" || true
+    out_txts=("$out_txt")
+  fi
 
-  # Use embedded python to parse the text into CSV
-  # NOTE: heredoc is unquoted so shell variables $out_txt and $out_csv are expanded
+  # Build a python-friendly list of text file paths (raw triple-quoted strings)
+  # Use printf so the variable contains actual newlines (valid Python list items)
+  TXT_LIST=$(printf 'r"""%s""",\n' "${out_txts[@]}")
+
+  # Use embedded python to parse the text(s) into CSV
+  # NOTE: heredoc is unquoted so shell variables are expanded
   python3 - <<PY
 import sys, csv, re
-
-txt_path = r"""$out_txt"""
+txt_paths = [
+$TXT_LIST
+]
+txt_paths = [p for p in txt_paths if p]
+txt_path = txt_paths[0] if txt_paths else r"""$out_txt"""
 csv_path = r"""$out_csv"""
 
 def normalize_space(s):
@@ -175,6 +216,53 @@ def is_description_heading(line):
     return True
   return False
 
+def find_book_anywhere(window_lines):
+  """Search a list of lines (window_lines) for any known book name.
+
+  Returns the canonical BOOK string if found, otherwise None.
+  """
+  # Prefer short lines that look like headings (few words), all-caps lines,
+  # or lines starting with a numeric prefix + book token. This avoids matching
+  # book-name tokens that appear inside normal verse/prose text.
+  for l in window_lines:
+    if not l:
+      continue
+    s = l.strip()
+    if not s:
+      continue
+    low = s.lower()
+    words = re.findall(r"[a-z0-9]+", low)
+    # Heading-like: short (<=6 words) and short length
+    is_short_heading = len(words) <= 6 and len(s) <= 60
+    # All-caps centered headings
+    is_all_caps = s.upper() == s and any(c.isalpha() for c in s)
+
+    # 1) direct full-name match but prefer when line looks like a heading
+    for b, bn in zip(BOOKS, BOOKS_NORMAL):
+      if re.match(rf'^\s*{re.escape(bn)}\b', low):
+        # strong match when at start of line
+        if is_short_heading or is_all_caps or re.match(r'^(?:\d+|[ivx]+)\b', low):
+          return b
+
+    # 2) numeric-prefix + book token (e.g., '1 Samuel' split across columns)
+    m = re.match(r'^(?:(?P<prefix>\d+|[ivx]+|first|second|third)\s+)?(?P<rest>.+)$', low)
+    if m:
+      rest = m.group('rest')
+      for b, bn in zip(BOOKS, BOOKS_NORMAL):
+        if rest.startswith(bn.split()[-1]):
+          if is_short_heading or is_all_caps or m.group('prefix'):
+            return b
+
+    # 3) fallback: check for last-word tokens but only when the line is heading-like
+    if is_short_heading or is_all_caps:
+      for t in words:
+        if t in BOOKS_TOKENS:
+          for b, bn in zip(BOOKS, BOOKS_NORMAL):
+            if bn.split()[-1] == t:
+              return b
+
+  return None
+
 rows = []
 last_row = None
 current_book = ''
@@ -182,13 +270,71 @@ current_chapter = ''
 started = False   # don't emit rows until we see a reliable verse with book context
 preface = []      # collect initial lines (TOC, title pages) -- will be discarded to avoid polluting CSV
 
-with open(txt_path, 'r', encoding='utf-8', errors='replace') as f:
-  raw_lines = [normalize_space(line) for line in f]
+raw_lines = []
+# If we have two column-extracted text files, merge them per page and per
+# line so that book names split across the left/right columns are stitched
+# together (e.g. "1" on left and "Samuel" on right -> "1 Samuel").
+if len(txt_paths) >= 2:
+  def read_pages(path):
+    try:
+      with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        content = f.read()
+    except Exception:
+      return []
+    # pdftotext uses form feed (\f) to separate pages
+    pages = content.split('\f')
+    # convert each page into list of normalized lines
+    return [[normalize_space(l) for l in p.splitlines()] for p in pages]
+
+  left_pages = read_pages(txt_paths[0])
+  right_pages = read_pages(txt_paths[1])
+  max_pages = max(len(left_pages), len(right_pages))
+  for pi in range(max_pages):
+    left_lines = left_pages[pi] if pi < len(left_pages) else []
+    right_lines = right_pages[pi] if pi < len(right_pages) else []
+    # Append left column lines first (in reading order), then right column lines.
+    # Do NOT merge left+right lines here; keep them separate so both are written
+    # to the resulting CSV. The parser will consult nearby lines (including
+    # the other column) when trying to detect book headings.
+    for l in left_lines:
+      if l:
+        raw_lines.append(l)
+    for r in right_lines:
+      if r:
+        raw_lines.append(r)
+else:
+  # fallback: read each file line-by-line (single-column extraction)
+  for tp in txt_paths:
+    try:
+      with open(tp, 'r', encoding='utf-8', errors='replace') as f:
+        for line in f:
+          raw_lines.append(normalize_space(line))
+    except Exception:
+      continue
+
+# Pre-process raw_lines: split any lines that contain multiple verse markers
+# (e.g., "1 In the beginning... 2 Now the earth...") into separate lines
+# that start with the verse number. This prevents a single CSV DESCRIPTION
+# from containing multiple verses collapsed into one long paragraph.
+processed_lines = []
+verse_split_re = re.compile(r'(?=(?:\b\d{1,3}\b))')
+for rl in raw_lines:
+  s = rl.strip()
+  if not s:
+    continue
+  # If the line contains more than one standalone verse number, split it
+  # into multiple lines starting at each verse number.
+  numbers = re.findall(r'\b\d{1,3}\b', s)
+  if len(numbers) >= 2:
+    parts = [p.strip() for p in verse_split_re.split(s) if p.strip()]
+    processed_lines.extend(parts)
+  else:
+    processed_lines.append(s)
 
 # iterate with index so we can look ahead and skip page numbers / TOC blocks
 i = 0
-while i < len(raw_lines):
-  line = raw_lines[i]
+while i < len(processed_lines):
+  line = processed_lines[i]
   i += 1
   if not line:
     continue
@@ -209,6 +355,42 @@ while i < len(raw_lines):
     continue
 
   book_found = find_book_in_line(line)
+  # If we didn't find a book name on this line, try a heuristic: if a recent
+  # previous line is a numeric prefix (e.g., '1' or 'I' or 'First') and this
+  # line begins with a book token (e.g., 'Samuel'), attempt to combine them
+  # conceptually for book detection without merging the source lines.
+  if not book_found:
+    # look back up to 3 previous non-empty lines for a numeric prefix
+    for back in range(1,4):
+      idx_back = i-1-back
+      if idx_back < 0 or idx_back >= len(processed_lines):
+        break
+      prev_line = processed_lines[idx_back].strip()
+      if not prev_line:
+        continue
+      mnum = re.match(r'^(?P<prefix>\d+|[ivx]+|\w+st|\w+nd|\w+rd|first|second|third)\.?$', prev_line, re.I)
+      if not mnum:
+        continue
+      pk = mnum.group('prefix')
+      # construct a candidate by prepending the prefix to the current line
+      candidate = (pk + ' ' + line).strip()
+      bf = find_book_in_line(candidate)
+      if bf:
+        book_found = bf
+        # treat the previous numeric-only line as a chapter/heading indicator
+        current_book = book_found
+        # try to extract chapter number from the rest of the candidate
+        rest = candidate[len(book_found):].strip()
+        m = re.match(r'^(?:\s*)(\d{1,3})(?:[:.\-\s]+(\d{1,3}))?', rest)
+        if m:
+          current_chapter = m.group(1) or current_chapter
+        break
+    # as a fallback, scan a small window of previous lines for any known book name
+    if not book_found:
+      win_k = max(0, i-6)
+      bf = find_book_anywhere(processed_lines[win_k:i])
+      if bf:
+        book_found = bf
   if book_found and len(line) <= len(book_found) + 12:
     current_book = book_found
     rest = line[len(book_found):].strip()
@@ -223,9 +405,9 @@ while i < len(raw_lines):
   if m_ch:
     # peek next non-empty line
     j = i
-    while j < len(raw_lines) and not raw_lines[j]:
+    while j < len(processed_lines) and not processed_lines[j]:
       j += 1
-    next_line = raw_lines[j] if j < len(raw_lines) else ''
+    next_line = processed_lines[j] if j < len(processed_lines) else ''
     # if next line looks like it starts with a verse number, accept as chapter
     if re.match(r'^\d{1,3}\b', next_line) or re.match(r'^\d{1,3}\s*\w', next_line):
       current_chapter = m_ch.group(1)
@@ -251,18 +433,21 @@ while i < len(raw_lines):
     # If we don't have a current book, try to look back a few lines for a book heading
     if not current_book and not current_chapter:
       k = max(0, i-6)
-      for bline in raw_lines[k:i-1][::-1]:
-        bf = find_book_in_line(bline)
-        if bf:
-          current_book = bf
-          break
+      bf = find_book_anywhere(processed_lines[k:i])
+      if bf:
+        current_book = bf
 
     # still ambiguous? skip numeric-looking lines without context
     if not current_book and not current_chapter and not find_book_in_line(line):
       if not started:
         preface.append(line)
       continue
-
+    # Create a new row per verse. Do not allow arbitrary following lines to
+    # accumulate into DESCRIPTION beyond the verse text itself. Continuation
+    # lines (when verses are split across physical lines) should have been
+    # split by the pre-processing above; but for small wrapped continuations
+    # we still allow appending the immediately following non-verse line if it
+    # begins with lowercase (likely a continuation) — otherwise treat as new.
     started = True
     preface = []
     rows.append([current_book, current_chapter, verse, desc])
@@ -289,7 +474,15 @@ while i < len(raw_lines):
     continue
 
   if last_row is not None:
-    last_row[3] = normalize_space(last_row[3] + ' ' + line)
+    # Only append as continuation when the line looks like a true wrap of
+    # the previous verse (e.g., starts with a lowercase word or is short).
+    if re.match(r'^[a-z\"\'\(]', line) or len(line.split()) < 6:
+      last_row[3] = normalize_space(last_row[3] + ' ' + line)
+    else:
+      # Treat as standalone description-only line (no verse number): create
+      # a separate row with empty verse but keep current book/chapter context.
+      rows.append([current_book, current_chapter, '', normalize_space(line)])
+      last_row = rows[-1]
   else:
     rows.append(['', '', '', normalize_space(line)])
     last_row = rows[-1]
@@ -297,16 +490,57 @@ while i < len(raw_lines):
 with open(csv_path, 'w', newline='', encoding='utf-8') as cf:
   writer = csv.writer(cf, quoting=csv.QUOTE_MINIMAL)
   writer.writerow(['BOOK', 'CHAPTER', 'VERSE', 'DESCRIPTION'])
+  # Post-process rows to assign chapter/verse counters when originals are
+  # missing or when a deterministic sequential numbering is desired.
+  # Behavior implemented here:
+  # - chapter_counter increments when we detect an explicit chapter marker
+  #   (either an original chapter value present, or a DESCRIPTION that begins
+  #   with the word 'chapter' + number). When chapter_counter increments,
+  #   verse_counter resets to 1.
+  # - verse_counter increments by 1 for each output row and is used to set
+  #   the VERSE field (overriding parsed values). This gives a stable, simple
+  #   numbering across the exported CSV.
+  chapter_counter = 1
+  verse_counter = 1
+  last_seen_original_chapter = None
   for r in rows:
-    # ensure description is a single-line string and trimmed
+    # normalize description
     r[3] = normalize_space(r[3]) if r[3] else ''
+
+    # detect explicit chapter markers in the parsed fields or description
+    explicit_ch = None
+    if r[1]:
+      try:
+        explicit_ch = int(re.sub(r"[^0-9]", "", r[1]))
+      except Exception:
+        explicit_ch = None
+    else:
+      mch = re.match(r'^chapter\s+(\d{1,3})', r[3], re.I)
+      if mch:
+        explicit_ch = int(mch.group(1))
+
+    # if we see a new explicit chapter (different from last seen), bump counters
+    if explicit_ch is not None and explicit_ch != last_seen_original_chapter:
+      chapter_counter = chapter_counter + 1 if last_seen_original_chapter is not None else chapter_counter
+      last_seen_original_chapter = explicit_ch
+      verse_counter = 1
+
+    # assign the computed chapter and verse
+    r[1] = str(chapter_counter)
+    r[2] = str(verse_counter)
+    verse_counter += 1
+
+    # remove leading 'Chapter N' from description if present
+    r[3] = re.sub(r'(?i)^chapter\s+\d{1,3}[:.\-\s]*', '', r[3]).strip()
+
     writer.writerow(r)
 
 print(f"Wrote: {csv_path}")
 PY
-
-  # cleanup extracted text file
-  rm -f "$out_txt"
+  # cleanup extracted text files
+  for tf in "${out_txts[@]}"; do
+    rm -f "$tf"
+  done
 }
 
 for pdf in "$@"; do
