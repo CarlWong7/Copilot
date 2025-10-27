@@ -76,10 +76,12 @@ process_pdf() {
         # extract left and right halves; if these succeed we'll parse both
         pdftotext -layout -x 0 -y 0 -W "$half" -H "$ph" "$pdf" "$out_txt_left" 2>/dev/null || true
         pdftotext -layout -x "$half" -y 0 -W "$half" -H "$ph" "$pdf" "$out_txt_right" 2>/dev/null || true
+        # also produce a full (unsplit) text extraction which we'll use
+        # as an unsplit reference for better book detection
+        pdftotext -layout "$pdf" "$out_txt" || true
         if [[ -s "$out_txt_left" && -s "$out_txt_right" ]]; then
           out_txts=("$out_txt_left" "$out_txt_right")
         else
-          pdftotext -layout "$pdf" "$out_txt" || true
           out_txts=("$out_txt")
         fi
       else
@@ -98,6 +100,8 @@ process_pdf() {
   # Build a python-friendly list of text file paths (raw triple-quoted strings)
   # Use printf so the variable contains actual newlines (valid Python list items)
   TXT_LIST=$(printf 'r"""%s""",\n' "${out_txts[@]}")
+  # also expose the unsplit full-text file to the parser (used for robust book detection)
+  FULL_TXT=$(printf 'r"""%s"""' "$out_txt")
 
   # Use embedded python to parse the text(s) into CSV
   # NOTE: heredoc is unquoted so shell variables are expanded
@@ -109,6 +113,7 @@ $TXT_LIST
 txt_paths = [p for p in txt_paths if p]
 txt_path = txt_paths[0] if txt_paths else r"""$out_txt"""
 csv_path = r"""$out_csv"""
+full_txt_path = r"""$out_txt"""
 
 def normalize_space(s):
   return re.sub(r"\s+", " ", s).strip()
@@ -170,13 +175,18 @@ def find_book_in_line(line):
         else:
           num = None
         if num:
-          # construct canonical book name like '1 Samuel' or '1 Kings'
-          # if book has spaces, take full form after the number (e.g., '1 Corinthians')
+          # construct candidate like '1 Samuel' and only accept it when it
+          # matches a canonical book name from BOOKS. This avoids returning
+          # fabricated names such as '3 Joshua'.
           name_parts = b.split(' ', 1)
+          candidate = f"{num} {name_parts[-1]}"
+          if candidate.lower() in BOOKS_NORMAL:
+            # return canonical form from BOOKS
+            idx = BOOKS_NORMAL.index(candidate.lower())
+            return BOOKS[idx]
+          # if the book entry already contains a numeric prefix and matches, return it
           if len(name_parts) == 2 and name_parts[0].isdigit():
-            # book entry already contains numeric prefix like '1 Samuel' in BOOKS; return as-is
             return b
-          return f"{num} {name_parts[-1]}"
         else:
           # matched last word without prefix (e.g., 'Samuel' alone)
           # only return the book if the whole line equals the book name (avoid TOC fragments)
@@ -261,6 +271,37 @@ def find_book_anywhere(window_lines):
             if bn.split()[-1] == t:
               return b
 
+  return None
+
+def find_book_nearest_from_full(proc_index, proc_len, full_book_positions, full_len):
+  """Estimate a corresponding position in the unsplit full text and
+  return the nearest book heading found there (or None).
+
+  proc_index: index in processed_lines (0-based)
+  proc_len: total processed_lines length
+  full_book_positions: list of (idx, book) tuples from full_lines
+  full_len: total number of lines in full_lines
+  """
+  if not full_book_positions:
+    return None
+  # scale processed index into full-text space
+  try:
+    scale = float(proc_index) / max(1, proc_len)
+  except Exception:
+    scale = 0.0
+  est = int(scale * max(1, full_len))
+  # find the closest book position <= est, else the earliest following one
+  before = None
+  after = None
+  for idx, bk in full_book_positions:
+    if idx <= est:
+      before = (idx, bk)
+    elif after is None and idx > est:
+      after = (idx, bk)
+  if before:
+    return before[1]
+  if after:
+    return after[1]
   return None
 
 rows = []
@@ -388,6 +429,184 @@ for rl in raw_lines:
   else:
     processed_lines.append(s)
 
+# Read the unsplit full-text extraction and index book heading positions
+full_lines = []
+try:
+  with open(full_txt_path, 'r', encoding='utf-8', errors='replace') as f:
+    content = f.read()
+  pages = content.split('\f')
+  for p in pages:
+    for l in p.splitlines():
+      ll = normalize_space(l)
+      if ll:
+        full_lines.append(ll)
+except Exception:
+  full_lines = []
+
+full_book_positions = []
+for idx, l in enumerate(full_lines):
+  try:
+    b = find_book_in_line(l)
+  except Exception:
+    b = None
+  if b:
+    full_book_positions.append((idx, b))
+
+# Map each processed line to a best-guess full_text line index so we can
+# consult the unsplit full-text per-processed-line when deciding the book.
+mapped_full_indices = []
+for p_idx in range(len(processed_lines)):
+  try:
+    mapped_full_indices.append(map_processed_index_to_full(p_idx, processed_lines, full_lines))
+  except Exception:
+    mapped_full_indices.append(0)
+
+def find_book_from_full_by_mapped_idx(mapped_idx):
+  if not full_book_positions:
+    return None
+  for idx_bk, bk in reversed(full_book_positions):
+    if idx_bk <= mapped_idx:
+      return bk
+  return full_book_positions[0][1]
+
+# Determine where verses start in processed_lines and map that position
+# into the unsplit full_text using exact-matching or a simple token-overlap
+# fallback. This improves the seed so book detection begins immediately
+# before the first verse.
+def map_processed_index_to_full(proc_idx, processed_lines, full_lines):
+  # try exact match of the processed line in full_lines
+  target = processed_lines[proc_idx] if 0 <= proc_idx < len(processed_lines) else ''
+  if not target:
+    return 0
+  # exact first match
+  for i, fl in enumerate(full_lines):
+    if fl == target:
+      return i
+  # try substring match (processed line may be a trimmed segment of a full line)
+  for i, fl in enumerate(full_lines):
+    if target in fl or fl in target:
+      return i
+  # fallback: use token-overlap scoring in a sliding window around estimated position
+  proc_len = max(1, len(processed_lines))
+  scale = float(proc_idx) / proc_len
+  est = int(scale * max(1, len(full_lines)))
+  # consider a ±200 line window (bounded)
+  win = 200
+  best_i = None
+  best_score = 0
+  t_tokens = set(re.findall(r"[a-z0-9]+", target.lower()))
+  if not t_tokens:
+    return max(0, min(est, len(full_lines)-1))
+  lo = max(0, est-win)
+  hi = min(len(full_lines)-1, est+win)
+  for i in range(lo, hi+1):
+    fl = full_lines[i]
+    f_tokens = set(re.findall(r"[a-z0-9]+", fl.lower()))
+    if not f_tokens:
+      continue
+    score = len(t_tokens & f_tokens)
+    if score > best_score:
+      best_score = score
+      best_i = i
+  if best_i is not None:
+    return best_i
+  return max(0, min(est, len(full_lines)-1))
+
+# find first verse-like processed index
+first_verse_idx = None
+for idx_p, l in enumerate(processed_lines):
+  if re.match(r'^(\d{1,3})[:\.\-]\s*(\d{1,3})(?:\s+(.*))?$', l):
+    first_verse_idx = idx_p
+    break
+  m_v_tmp = re.match(r'^(\d{1,3})\s*(.*)$', l)
+  if m_v_tmp and m_v_tmp.group(2).strip():
+    first_verse_idx = idx_p
+    break
+if first_verse_idx is None:
+  first_verse_idx = 0
+
+# Map to full_lines index
+mapped_full_idx = 0
+try:
+  if full_lines:
+    mapped_full_idx = map_processed_index_to_full(first_verse_idx, processed_lines, full_lines)
+except Exception:
+  mapped_full_idx = 0
+
+# Prefer any explicit book heading that appears in the processed (split)
+# text immediately before the first verse. This prevents distant front/back
+# matter book headings (e.g., in headers/TOC) from being used when a clear
+# local heading like 'Genesis' exists near the verse start.
+local_book_candidate = None
+try:
+  search_lo = max(0, first_verse_idx - 120)
+  search_hi = max(0, first_verse_idx)
+  # scan backwards so we prefer the most-recent nearby heading
+  for pi in range(search_hi-1, search_lo-1, -1):
+    try:
+      lb = find_book_in_line(processed_lines[pi])
+    except Exception:
+      lb = None
+    if lb:
+      local_book_candidate = lb
+      break
+  if not local_book_candidate:
+    # try a small window-based search using find_book_anywhere
+    win_lo = max(0, first_verse_idx - 20)
+    win_hi = first_verse_idx
+    bf = find_book_anywhere(processed_lines[win_lo:win_hi])
+    if bf:
+      local_book_candidate = bf
+except Exception:
+  local_book_candidate = None
+
+# Now find the nearest preceding book heading in full_book_positions
+# but only seed when the heading is reasonably close to the mapped index
+# (avoid picking distant headings from front/back matter). If no nearby
+# heading is found, skip seeding and allow local heuristics to determine
+# the book.
+seed_book = None
+PRESEED_BACK_WINDOW = 200  # lines before mapped index considered "nearby"
+PRESEED_FORWARD_WINDOW = 40 # lines after mapped index to consider if nothing before
+if full_book_positions:
+  # find the closest preceding heading index
+  chosen = None
+  for idx_bk, bk in reversed(full_book_positions):
+    if idx_bk <= mapped_full_idx:
+      chosen = (idx_bk, bk)
+      break
+  if chosen:
+    if (mapped_full_idx - chosen[0]) <= PRESEED_BACK_WINDOW:
+      seed_book = chosen[1]
+  else:
+    # no preceding heading; try a small forward window
+    for idx_bk, bk in full_book_positions:
+      if idx_bk > mapped_full_idx and (idx_bk - mapped_full_idx) <= PRESEED_FORWARD_WINDOW:
+        seed_book = bk
+        break
+
+seed_applied = False
+if seed_book:
+  # Only accept the seed when the same book token appears in the nearby
+  # processed_lines window; this avoids using distant headings from headers
+  # or TOC that don't reflect the local column text.
+  proc_window_back = 20
+  proc_window_forward = 5
+  found_in_proc = False
+  start_p = max(0, first_verse_idx - proc_window_back)
+  end_p = min(len(processed_lines)-1, first_verse_idx + proc_window_forward)
+  for pi in range(start_p, end_p+1):
+    try:
+      b2 = find_book_in_line(processed_lines[pi])
+    except Exception:
+      b2 = None
+    if b2 == seed_book:
+      found_in_proc = True
+      break
+  if found_in_proc:
+    current_book = seed_book
+    seed_applied = True
+
 # iterate with index so we can look ahead and skip page numbers / TOC blocks
 i = 0
 while i < len(processed_lines):
@@ -415,7 +634,9 @@ while i < len(processed_lines):
   # If we didn't find a book name on this line, try a heuristic: if a recent
   # previous line is a numeric prefix (e.g., '1' or 'I' or 'First') and this
   # line begins with a book token (e.g., 'Samuel'), attempt to combine them
-  # conceptually for book detection without merging the source lines.
+  # conceptually for book detection without merging the source lines. As a
+  # stronger fallback, consult the unsplit full-text extraction for nearby
+  # detected book headings.
   if not book_found:
     # look back up to 3 previous non-empty lines for a numeric prefix
     for back in range(1,4):
@@ -446,6 +667,18 @@ while i < len(processed_lines):
     if not book_found:
       win_k = max(0, i-6)
       bf = find_book_anywhere(processed_lines[win_k:i])
+      if not bf:
+        # fallback: consult the mapped full-text index for the last processed
+        # line and choose the nearest preceding book heading there.
+        try:
+          proc_idx = i-1
+          if proc_idx < len(mapped_full_indices):
+            mapped_idx = mapped_full_indices[proc_idx]
+          else:
+            mapped_idx = 0
+          bf = find_book_from_full_by_mapped_idx(mapped_idx)
+        except Exception:
+          bf = None
       if bf:
         book_found = bf
   if book_found and len(line) <= len(book_found) + 12:
@@ -486,11 +719,24 @@ while i < len(processed_lines):
       if not started:
         preface.append(line)
       continue
-    if not current_book:
-      k = max(0, i-6)
-      bf = find_book_anywhere(processed_lines[k:i])
-      if bf:
-        current_book = bf
+
+    # Prefer a locally-detected book heading (from nearby processed lines)
+    # for initial verses — this overrides any seeded book if we haven't
+    # begun emitting rows yet.
+    k = max(0, i-6)
+    bf = find_book_anywhere(processed_lines[k:i])
+    if not bf:
+      try:
+        proc_idx = i-1
+        if proc_idx < len(mapped_full_indices):
+          mapped_idx = mapped_full_indices[proc_idx]
+        else:
+          mapped_idx = 0
+        bf = find_book_from_full_by_mapped_idx(mapped_idx)
+      except Exception:
+        bf = None
+    if bf and (not started or (seed_applied and not started)):
+      current_book = bf
     if not current_book and not started:
       preface.append(line)
       continue
@@ -515,7 +761,9 @@ while i < len(processed_lines):
       continue
 
     # If we don't have a current book, try to look back a few lines for a book heading
-    if not current_book and not current_chapter:
+    # Also prefer a locally-detected book over a seeded book if we haven't
+    # actually started emitting rows yet.
+    if not current_book or (seed_applied and not started):
       k = max(0, i-6)
       bf = find_book_anywhere(processed_lines[k:i])
       if bf:
@@ -571,7 +819,25 @@ while i < len(processed_lines):
     rows.append(['', '', '', normalize_space(line)])
     last_row = rows[-1]
 
-  with open(csv_path, 'w', newline='', encoding='utf-8') as cf:
+# If we detected a local book candidate near the first verse, ensure any
+# earlier rows (that were mis-assigned from headers/TOC) inherit that book
+# up to the first occurrence of the candidate in `rows`.
+if 'local_book_candidate' in globals() and local_book_candidate:
+  first_idx = None
+  for idx_r, rr in enumerate(rows):
+    try:
+      if rr[0] == local_book_candidate:
+        first_idx = idx_r
+        break
+    except Exception:
+      continue
+  if first_idx is not None and first_idx > 0:
+    for j in range(0, first_idx):
+      # only override when a different BOOK is present (avoid clobbering blanks)
+      if rows[j][0] and rows[j][0] != local_book_candidate:
+        rows[j][0] = local_book_candidate
+
+with open(csv_path, 'w', newline='', encoding='utf-8') as cf:
     writer = csv.writer(cf, quoting=csv.QUOTE_MINIMAL)
     writer.writerow(['BOOK', 'CHAPTER', 'VERSE', 'DESCRIPTION'])
     # Post-process rows to preserve detected chapter numbers and fill
@@ -588,6 +854,11 @@ while i < len(processed_lines):
     last_book_name = None
     # Track last assigned verse to detect resets which imply a chapter change
     last_assigned_verse = None
+    prev_assigned_chapter = None
+    prev_output = None
+    # track used verse numbers per (BOOK, CHAPTER) to ensure duplicates
+    # are given their own verse number (uniqueness within a chapter)
+    used_verses = {}
     for r in rows:
       # normalize description
       r[3] = normalize_space(r[3]) if r[3] else ''
@@ -626,6 +897,20 @@ while i < len(processed_lines):
         verse_counter = 1
         last_assigned_verse = None
 
+      # determine the chapter that will be assigned to this row
+      if explicit_ch is not None:
+        assigned_chapter = explicit_ch
+      elif last_chapter is not None:
+        assigned_chapter = last_chapter
+      else:
+        assigned_chapter = chapter_counter
+
+      # if chapter changed compared to previous output row, reset verse numbering
+      if prev_assigned_chapter is None or assigned_chapter != prev_assigned_chapter:
+        verse_counter = 1
+        last_assigned_verse = None
+        prev_assigned_chapter = assigned_chapter
+
       # detect explicit verse if present
       explicit_verse = None
       if r[2]:
@@ -636,13 +921,12 @@ while i < len(processed_lines):
       # If verse numbers are present and appear to reset/decrease, treat as new chapter
       if explicit_verse is not None:
         if last_assigned_verse is not None and explicit_verse <= last_assigned_verse:
-          # verse restarted: assume a new chapter
+          # verse restarted: assume a new chapter (increment fallback if needed)
           chapter_counter = (last_chapter + 1) if last_chapter is not None else chapter_counter + 1
           last_chapter = chapter_counter
-          verse_counter = explicit_verse + 1
-        else:
-          verse_counter = explicit_verse + 1
-        last_assigned_verse = explicit_verse
+          # when we deduce a new chapter, ensure verse_counter and last_assigned_verse reset
+          verse_counter = 1
+          last_assigned_verse = None
 
       # assign chapter: prefer explicit, then last seen, else use running counter
       if explicit_ch is not None:
@@ -652,22 +936,84 @@ while i < len(processed_lines):
       else:
         r[1] = str(chapter_counter)
 
-      # assign verse: explicit if present, else increment from last_assigned_verse
-      if explicit_verse is not None:
-        r[2] = str(explicit_verse)
+      # assign verse: if chapter just changed, always reset to 1; otherwise
+      # prefer explicit verse if present, else increment sequentially
+      if prev_assigned_chapter is not None and int(r[1]) != prev_assigned_chapter:
+        # chapter change detected for this row — reset to 1
+        r[2] = '1'
+        last_assigned_verse = 1
+        verse_counter = 2
       else:
-        # no explicit verse: increment sequentially
-        if last_assigned_verse is None:
-          r[2] = str(verse_counter)
+        if explicit_verse is not None:
+          r[2] = str(explicit_verse)
+          last_assigned_verse = explicit_verse
+          verse_counter = explicit_verse + 1
         else:
-          r[2] = str(last_assigned_verse + 1)
-          last_assigned_verse = int(r[2])
-        verse_counter = int(r[2]) + 1
+          if last_assigned_verse is None:
+            r[2] = str(verse_counter)
+            last_assigned_verse = int(r[2])
+            verse_counter = last_assigned_verse + 1
+          else:
+            r[2] = str(last_assigned_verse + 1)
+            last_assigned_verse = int(r[2])
+            verse_counter = last_assigned_verse + 1
 
       # remove leading 'Chapter N' from description if present
       r[3] = re.sub(r'(?i)^chapter\s+\d{1,3}[:.\-\s]*', '', r[3]).strip()
 
+      # Defensive check: if a verse value is suspiciously large (>100),
+      # it's likely a mis-detection (ages, years, page numbers). Treat the
+      # detected number as not a real verse: move it back into DESCRIPTION
+      # and reset the verse to 1. Update counters so sequencing continues.
+      try:
+        vcheck = int(r[2]) if r[2] else None
+      except Exception:
+        vcheck = None
+
+      if vcheck is not None and vcheck > 100:
+        # prepend the spurious number into the description so it's retained
+        r[3] = (str(vcheck) + ' ' + r[3]).strip() if r[3] else str(vcheck)
+        # if chapter is empty or non-numeric, promote the detected number
+        # to chapter; otherwise leave chapter as-is but reset verse to 1
+        try:
+          chapnum = int(r[1]) if r[1] else None
+        except Exception:
+          chapnum = None
+        if chapnum is None:
+          r[1] = str(vcheck)
+        # reset verse to 1 and update counters
+        r[2] = '1'
+        last_assigned_verse = 1
+        verse_counter = 2
+
+      # Ensure verse uniqueness within the (BOOK, CHAPTER).
+      bk = r[0] or ''
+      ch = r[1] or ''
+      key = (bk, ch)
+      try:
+        curv = int(r[2]) if r[2] else None
+      except Exception:
+        curv = None
+      if key not in used_verses:
+        used_verses[key] = set()
+
+      # If current verse is missing, fill from counter
+      if curv is None:
+        curv = verse_counter
+        r[2] = str(curv)
+        last_assigned_verse = curv
+        verse_counter = curv + 1
+
+      # If the verse number is already used in this chapter, bump until unique
+      while curv in used_verses[key]:
+        curv += 1
+        r[2] = str(curv)
+        last_assigned_verse = curv
+        verse_counter = curv + 1
+
+      used_verses[key].add(curv)
       writer.writerow(r)
+      prev_output = [r[0], r[1], r[2], r[3]]
 
 print(f"Wrote: {csv_path}")
 PY
