@@ -1,24 +1,25 @@
 FROM python:3.11-slim
 
-# Install poppler (pdftotext) and other small deps
+# Install poppler-utils (pdftotext, pdfinfo) and cleanup
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-       poppler-utils \
-       curl \
+    && apt-get install -y --no-install-recommends poppler-utils ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /opt/converter
 
-# Copy application files
-COPY pdf2csv.sh /app/pdf2csv.sh
-COPY app.py /app/app.py
-COPY requirements.txt /app/requirements.txt
+# Copy the existing converter script into the image
+COPY converter.sh /opt/converter/converter.sh
+RUN chmod +x /opt/converter/converter.sh
 
-RUN chmod +x /app/pdf2csv.sh
+# Python deps for the API server
+COPY requirements.txt /opt/converter/requirements.txt
+RUN pip install --no-cache-dir -r /opt/converter/requirements.txt
 
-# Install Python deps
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# App
+COPY app.py /opt/converter/app.py
 
-EXPOSE 8080
+# Do not expose ports in the Dockerfile (user requested "no ports").
+# The server will run inside the container, reachable via container-internal networking
+# (e.g. via `docker exec` or from other containers on the same Docker network).
 
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app", "--workers", "1"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,91 +1,36 @@
-# pdf2csv.sh
+PDF Converter Docker image
 
-Small helper to convert PDF files into CSV files with the columns:
+This repository contains a small Docker image that bundles `converter.sh` (a PDF->TXT converter that attempts to split multi-column pages into separate column pages when a blank vertical separator is detected) and exposes it via an internal HTTP API using FastAPI.
 
-- BOOK
-- CHAPTER
-- VERSE
-- DESCRIPTION
+Important: per request, the image does not publish or expose host ports. The server runs inside the container on port 8000, but you should interact with it via `docker exec` (or from other containers on the same Docker network).
 
-Requirements
-------------
+Build:
 
-- pdftotext (from poppler-utils) must be installed and available in PATH.
-- python3 (3.6+) must be installed.
+    docker build -t pdf-converter:latest .
 
-On Windows you can use WSL, Git Bash with poppler installed, or Cygwin.
+Run (detached):
 
-Usage
------
+    docker run -d --name pdfconv pdf-converter:latest
 
-Run the script with one or more PDF filenames:
+Convert a file from the host without publishing ports
 
-```bash
-./pdf2csv.sh file1.pdf file2.pdf
-```
+Option A — use `docker exec` with `curl` from inside the container:
 
-Each input file will produce a CSV next to it with the same basename.
+    # copy a local PDF into the container (optional)
+    docker cp mydoc.pdf pdfconv:/tmp/mydoc.pdf
 
-Notes and assumptions
----------------------
+    # then run curl inside the container to post and save the result
+    docker exec -i pdfconv curl -s -X POST "http://127.0.0.1:8000/convert" -F "file=@/tmp/mydoc.pdf" -o /tmp/result.txt
 
-- The script uses `pdftotext -layout` to extract text from the PDF. This
-  works best for PDFs with selectable text. Scanned images will not parse
-  unless OCR is run first (e.g., with Tesseract).
-- Parsing is heuristic: the embedded Python tries to match lines containing
-  a book name followed by a chapter and optional verse. If a line can't be
-  parsed, the entire line is placed in DESCRIPTION and other fields are empty.
-- You can adapt the regex inside the script for your PDF's specific layout.
+    # then copy result back to host
+    docker cp pdfconv:/tmp/result.txt ./result.txt
 
-Improvements you might add
---------------------------
+Option B — run a transient container that mounts your file and calls the API internally:
 
-- Use OCR for scanned PDFs (tesseract + tesseract-ocr language packs).
-- Improve grouping of multi-line descriptions (merge lines belonging to
-  the same verse).
-- Support output to a single combined CSV for multiple PDFs.
-
-Docker / API
-------------
-
-This repository includes a small Flask API and a Dockerfile that packages the
-`pdf2csv.sh` script so you can run it as a service. The service exposes:
-
-- GET /health — returns a small JSON health object
-- POST /convert — accepts a PDF file upload (form field `file`) and returns a
-  CSV file produced by `pdf2csv.sh`.
-
-Build and run with docker-compose (requires Docker):
-
-```powershell
-# from repository root
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-Test the health endpoint (PowerShell):
-
-```powershell
-Invoke-RestMethod -Uri http://localhost:8080/health
-# => {"status":"ok"}
-```
-
-Upload a PDF and download the CSV (PowerShell):
-
-```powershell
-$resp = Invoke-RestMethod -Uri http://localhost:8080/convert -Method Post -InFile .\sample.pdf -ContentType 'multipart/form-data' -OutFile sample.csv
-```
-
-Or using curl (Linux / macOS / WSL):
-
-```bash
-curl -F "file=@sample.pdf" http://localhost:8080/convert -o sample.csv
-```
+    docker run --rm -v "$PWD":/work --entrypoint sh pdf-converter:latest -c "curl -s -X POST 'http://127.0.0.1:8000/convert' -F 'file=@/work/mydoc.pdf' -o /work/result.txt"
 
 Notes:
 
-- The container image includes `pdftotext` (poppler) and Python dependencies from
-  `requirements.txt`. If your PDFs are scanned images you will need an OCR step
-  (Tesseract) before conversion.
-- The `pdf2csv.sh` script is copied to `/app/pdf2csv.sh` inside the container and
-  executed by the Flask endpoint. Ensure uploaded files are valid PDFs.
+- If you want to reach the API directly from the host via localhost, you can instead publish the port when running the container (e.g. `-p 8000:8000`) but per your request the provided examples avoid publishing host ports.
+- The converter requires `pdftotext` / `pdfinfo` (poppler-utils) and Python 3 — these are installed in the image.
+- Tweak detection thresholds (THRESH, MIN_RUN) inside `converter.sh` if your PDFs have narrow inter-column spacing.

@@ -1,44 +1,35 @@
-import os
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import PlainTextResponse
+import shutil
 import subprocess
 import tempfile
-from flask import Flask, request, send_file, jsonify
-from werkzeug.utils import secure_filename
+from pathlib import Path
 
-app = Flask(__name__)
+app = FastAPI(title="PDF Converter (internal API)")
 
-@app.route('/convert', methods=['POST'])
-def convert():
-    if 'file' not in request.files:
-        return jsonify({'error': 'no file provided'}), 400
 
-    f = request.files['file']
-    if f.filename == '':
-        return jsonify({'error': 'empty filename'}), 400
+@app.post("/convert", response_class=PlainTextResponse)
+async def convert(file: UploadFile = File(...)):
+    # Accepts a PDF upload and returns converted text (single concatenated txt)
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail="Only PDF files are supported")
 
-    filename = secure_filename(f.filename)
-    if not filename.lower().endswith('.pdf'):
-        return jsonify({'error': 'only pdf files are supported'}), 400
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        in_path = td_path / "input.pdf"
+        out_path = td_path / "output.txt"
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        pdf_path = os.path.join(tmpdir, filename)
-        f.save(pdf_path)
+        # Write uploaded file to disk
+        with in_path.open("wb") as f:
+            shutil.copyfileobj(file.file, f)
 
-        # call the script which will produce a CSV next to the PDF
-        script_path = '/app/pdf2csv.sh'
-        try:
-            subprocess.run([script_path, pdf_path], check=True, cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except subprocess.CalledProcessError as e:
-            return jsonify({'error': 'conversion failed', 'stdout': e.stdout.decode('utf-8', errors='replace'), 'stderr': e.stderr.decode('utf-8', errors='replace')}), 500
+        # Run the bundled converter script
+        proc = subprocess.run(["/bin/bash", "/opt/converter/converter.sh", str(in_path), str(out_path)], capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Conversion failed: {proc.stderr[:1000]}")
 
-        csv_path = os.path.splitext(pdf_path)[0] + '.csv'
-        if not os.path.exists(csv_path):
-            return jsonify({'error': 'csv not produced'}), 500
-
-        return send_file(csv_path, mimetype='text/csv', as_attachment=True, download_name=os.path.basename(csv_path))
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'ok'})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+        # Read and return the resulting text
+        if not out_path.exists():
+            raise HTTPException(status_code=500, detail="Conversion did not produce an output file")
+        txt = out_path.read_text(encoding="utf-8")
+        return PlainTextResponse(content=txt, media_type="text/plain; charset=utf-8")
