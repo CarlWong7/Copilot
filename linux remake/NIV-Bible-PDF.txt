@@ -1,4 +1,3 @@
-=== Page 1 ===
 Holy Bible New International Version
 
 
@@ -14,9 +13,6 @@ available.
 http://GODoor.net
 
 
-
-# --- End of page 1 ---
-=== Page 2 - Column 1 of 2 ===
 Old Testament Genesis Exodus Leviticus Numbers Deuteronomy Joshua Judges Ruth
 1st Samuel 2nd Samuel 1st Kings 2nd Kings 1st Chronicles 2nd Chronicles Ezra
 Nehemiah Esther Job Psalms Proverbs Ecclesiastes Song of Solomon Isaiah Jeremiah
@@ -24,16 +20,12 @@ Lamentations Ezekiel Daniel Hosea Joel Amos Obadiah Jonah Micah Nahum Habakkuk
 Zephaniah Haggai Zechariah Malachi
 
 
-=== Page 2 - Column 2 of 2 ===
 New Testament Matthew Mark Luke John Acts Romans 1st Corinthians 2nd Corinthians
 Galatians Ephesians Philippians Colossians 1st Thessalonians 2nd Thessalonians
 1st Timothy 2nd Timothy Titus Philemon Hebrews James 1st Peter 2nd Peter 1st
 John 2nd John 3rd John Jude Revelation
 
 
-
-# --- End of page 2 ---
-=== Page 3 - Column 1 of 2 ===
 Genesis
 
 
@@ -57,7 +49,6 @@ second day. 9 And God said, "Let the water under the sky be gathered to one
 place, and let dry ground appear." And it was so.
 
 
-=== Page 3 - Column 2 of 2 ===
 10 God called the dry ground "land," and the gathered waters he called "seas."
 And God saw that it was good. 11 Then God said, "Let the land produce
 vegetation: seed-bearing plants and trees on the land that bear fruit with seed
@@ -81,9 +72,6 @@ expanse of the sky to give light on the earth,
 saw that it was good.
 
 
-
-# --- End of page 3 ---
-=== Page 4 - Column 1 of 2 ===
 19 And there was evening, and there was morning-the fourth day.
 20 And God said, "Let the water teem
 with living creatures, and let birds fly above the earth across the expanse of
@@ -109,7 +97,6 @@ rule over the fish of the sea and the birds of the air, over the livestock, over
 all the earth, and over all the creatures that move along the ground."
 
 
-=== Page 4 - Column 2 of 2 ===
 27 So God created man in his own image, in the image of God he created him; male
 and female he created them.
 
@@ -137,9 +124,6 @@ all the work of creating that he had done.
 4 This is the account of the heavens and the earth when they were created.
 
 
-
-# --- End of page 4 ---
-=== Page 5 - Column 1 of 2 ===
 When the Lord God made the earth and the heavens-
 5 and no shrub of the field had yet appeared on the earth and no plant of
 the field had yet sprung up, for the Lord God had not sent rain on the earth and
@@ -166,7 +150,6 @@ aromatic resin and onyx are also there.)
 of Cush.
 
 
-=== Page 5 - Column 2 of 2 ===
 14 The name of the third river is the Tigris; it runs along the east side of
 Asshur. And the fourth river is the
 Euphrates.
@@ -192,9 +175,6 @@ sleeping, he took one of the man's ribs and closed up the place with flesh.
 and he brought her to the man.
 
 
-
-# --- End of page 5 ---
-=== Page 6 - Column 1 of 2 ===
 23 The man said, "This is now bone of my bones and flesh of my flesh; she shall
 be called 'woman, ' for she was taken out of man."
 24 For this reason a man will leave his
@@ -218,7 +198,6 @@ to the eye, and also desirable for gaining wisdom, she took some and ate it. She
 also gave some to her husband, who was with her, and he ate it.
 
 
-=== Page 6 - Column 2 of 2 ===
 7 Then the eyes of both of them were opened, and they realized they were naked;
 so they sewed fig leaves together and made coverings for themselves.
 
@@ -241,9 +220,6 @@ belly and you will eat dust all the days of your life.
 15 And I will put enmity between you and the woman, and between your offspring
 
 
-
-# --- End of page 6 ---
-=== Page 7 - Column 1 of 2 ===
 and hers; he will crush your head, and you will strike his heel."
 16 To the woman he said, "I will greatly increase your pains in childbearing;
 with pain you will give birth to children. Your desire will be for your husband,
@@ -267,7 +243,6 @@ tree of life and eat, and live forever."
 which he had been taken.
 
 
-=== Page 7 - Column 2 of 2 ===
 24 After he drove the man out, he placed on the east side of the Garden of Eden
 cherubim and a flaming sword flashing
 back and forth to guard the way to the tree of life.
@@ -291,9 +266,6 @@ master it."
 were in the field, Cain attacked his brother Abel and killed him.
 
 
-
-# --- End of page 7 ---
-=== Page 8 - Column 1 of 2 ===
 9 Then the Lord said to Cain, "Where is your brother Abel?" "I don't know," he
 replied. "Am I my brother's keeper?"
 
@@ -323,7 +295,6 @@ was then building a city, and he named it after his son Enoch. 18 To Enoch was
 born Irad, and Irad was the father of Mehujael, and Mehujael
 
 
-=== Page 8 - Column 2 of 2 ===
 was the father of Methushael, and Methushael was the father of Lamech.
 19 Lamech married two women, one
 named Adah and the other Zillah.
@@ -350,9 +321,6 @@ call on the name of the Lord .
 in the likeness of God.
 
 
-
-# --- End of page 8 ---
-=== Page 9 - Column 1 of 2 ===
 2 He created them male and female and blessed them. And when they were created,
 he called them "man. "
 
@@ -382,7 +350,6 @@ sons and daughters.
 other sons and daughters.
 
 
-=== Page 9 - Column 2 of 2 ===
 14 Altogether, Kenan lived 910 years, and then he died.
 15 When Mahalalel had lived 65 years, he
 became the father of Jared.
@@ -409,9 +376,6 @@ he became the father of Lamech.
 other sons and daughters.
 
 
-
-# --- End of page 9 ---
-=== Page 10 - Column 1 of 2 ===
 27 Altogether, Methuselah lived 969 years, and then he died.
 28 When Lamech had lived 182 years, he had a son.
 
@@ -433,7 +397,6 @@ of God went to the daughters of men and had children by them. They were the
 heroes of old, men of renown.
 
 
-=== Page 10 - Column 2 of 2 ===
 5 The Lord saw how great man's wickedness on the earth had become, and that
 every inclination of the thoughts
 of his heart was only evil all the time.
@@ -456,9 +419,6 @@ and the earth.
 pitch inside and out.
 
 
-
-# --- End of page 10 ---
-=== Page 11 - Column 1 of 2 ===
 15 This is how you are to build it: The ark is to be 450 feet long, 75 feet wide
 and 45 feet high.
 16 Make a roof for it and finish the ark to
@@ -486,7 +446,6 @@ Noah did everything just as God commanded him.
 because I have found you righteous in this generation.
 
 
-=== Page 11 - Column 2 of 2 ===
 2 Take with you seven of every kind of clean animal, a male and its mate, and
 two of every kind of unclean animal, a male and its mate,
 
@@ -512,9 +471,6 @@ floodgates of the heavens were opened.
 12 And rain fell on the earth forty days and forty nights.
 
 
-
-# --- End of page 11 ---
-=== Page 12 - Column 1 of 2 ===
 13 On that very day Noah and his sons, Shem, Ham and Japheth, together with his
 wife and the wives of his three sons, entered the ark.
 
@@ -537,7 +493,6 @@ earth perished-birds, livestock, wild animals, all the creatures that swarm over
 the earth, and all mankind.
 
 
-=== Page 12 - Column 2 of 2 ===
 22 Everything on dry land that had the breath of life in its nostrils died.
 23 Every living thing on the face of the earth was wiped out; men and animals
 and the creatures that move along the ground and the birds of the air were wiped
@@ -558,9 +513,6 @@ the tenth month the tops of the mountains became visible.
 6 After forty days Noah opened the window he had made in the ark
 
 
-
-# --- End of page 12 ---
-=== Page 13 - Column 1 of 2 ===
 7 and sent out a raven, and it kept flying back and forth until the water had
 dried up from the earth.
 8 Then he sent out a dove to see if the water had receded from the surface of
@@ -586,7 +538,6 @@ and saw that the surface of the ground was dry.
 16 "Come out of the ark, you and your wife and your sons and their wives.
 
 
-=== Page 13 - Column 2 of 2 ===
 17 Bring out every kind of living creature that is with you-the birds, the
 animals, and all the creatures that move along the ground-so they can multiply
 on the
@@ -616,9 +567,6 @@ all the beasts of the earth and all the birds of the air, upon every creature
 that moves along the ground, and upon all
 
 
-
-# --- End of page 13 ---
-=== Page 14 - Column 1 of 2 ===
 the fish of the sea; they are given into your hands.
 3 Everything that lives and moves will be food for you. Just as I gave you the
 green plants, I now give you everything.
@@ -644,7 +592,6 @@ waters of a flood; never again will there be a flood to destroy the earth."
 12 And God said, "This is the sign of the covenant I am making between me and
 
 
-=== Page 14 - Column 2 of 2 ===
 you and every living creature with you, a covenant for all generations to come:
 13 I have set my rainbow in the clouds, and it will be the sign of the covenant
 between me and the earth.
@@ -669,9 +616,6 @@ tent.
 father's nakedness and told his two brothers outside.
 
 
-
-# --- End of page 14 ---
-=== Page 15 - Column 1 of 2 ===
 23 But Shem and Japheth took a garment and laid it across their shoulders; then
 they walked in backward and covered their father's nakedness. Their faces
 were turned the other way so that they would not see their father's nakedness.
@@ -695,7 +639,6 @@ Madai, Javan, Tubal, Meshech and Tiras.
 3 The sons of Gomer: Ashkenaz, Riphath and Togarmah.
 
 
-=== Page 15 - Column 2 of 2 ===
 4 The sons of Javan: Elishah, Tarshish, the Kittim and the Rodanim.
 5 (From these the maritime peoples spread out into their territories by their
 clans within their nations, each with its own language.) The Hamites
@@ -717,9 +660,6 @@ Babylon, Erech, Akkad and Calneh, in Shinar.
 15 Canaan was the father of Sidon his firstborn, and of the Hittites,
 
 
-
-# --- End of page 15 ---
-=== Page 16 - Column 1 of 2 ===
 16 Jebusites, Amorites, Girgashites,
 17 Hivites, Arkites, Sinites,
 
@@ -745,7 +685,6 @@ earth was divided; his brother was named Joktan.
 28 Obal, Abimael, Sheba,
 
 
-=== Page 16 - Column 2 of 2 ===
 29 Ophir, Havilah and Jobab. All these were sons of Joktan.
 
 30 The region where they lived stretched
@@ -773,9 +712,6 @@ and the tower that the men were building.
 6 The Lord said, "If as one people speaking the same language they have
 
 
-
-# --- End of page 16 ---
-=== Page 17 - Column 1 of 2 ===
 begun to do this, then nothing they plan to do will be impossible for them.
 7 Come, let us go down and confuse their
 language so they will not understand each other."
@@ -801,7 +737,6 @@ Eber, Shelah lived 403 years and had other sons and daughters.
 16 When Eber had lived 34 years, he became the father of Peleg.
 
 
-=== Page 17 - Column 2 of 2 ===
 17 And after he became the father of Peleg, Eber lived 430 years and had other
 sons and daughters.
 
@@ -827,9 +762,6 @@ After Terah had lived 70 years, he became the father of Abram, Nahor and Haran.
 Haran. And Haran became the father of Lot.
 
 
-
-# --- End of page 17 ---
-=== Page 18 - Column 1 of 2 ===
 28 While his father Terah was still alive, Haran died in Ur of the Chaldeans, in
 the land of his birth.
 29 Abram and Nahor both married. The name of Abram's wife was Sarai, and the
@@ -856,7 +788,6 @@ peoples on earth will be blessed through you."
 seventy-five years old when he set out from Haran.
 
 
-=== Page 18 - Column 2 of 2 ===
 5 He took his wife Sarai, his nephew Lot, all the possessions they had
 accumulated and the people they had acquired in Haran, and they set out for
 the land of Canaan, and they arrived there.
@@ -883,9 +814,6 @@ Say you are my sister, so that I will be treated well for your sake and my life
 will be spared because of you."
 
 
-
-# --- End of page 18 ---
-=== Page 19 - Column 1 of 2 ===
 14 When Abram came to Egypt, the Egyptians saw that she was a very beautiful
 woman.
 15 And when Pharaoh's officials saw her, they praised her to Pharaoh, and she
@@ -911,7 +839,6 @@ place until he came to Bethel, to the place between Bethel and Ai where his tent
 had been earlier
 
 
-=== Page 19 - Column 2 of 2 ===
 4 and where he had first built an altar. There Abram called on the name of the
 Lord .
 5 Now Lot, who was moving about with Abram, also had flocks and herds and tents.
@@ -935,9 +862,6 @@ east. The two men parted company:
 plain and pitched his tents near Sodom.
 
 
-
-# --- End of page 19 ---
-=== Page 20 - Column 1 of 2 ===
 13 Now the men of Sodom were wicked and were sinning greatly against the Lord .
 14 The Lord said to Abram after Lot had parted from him, "Lift up your eyes from
 where you are and look north and south, east and west.
@@ -959,7 +883,6 @@ of Admah, Shemeber king of Zeboiim, and the king of Bela (that is, Zoar).
 3 All these latter kings joined forces in the Valley of Siddim (the Salt Sea ).
 
 
-=== Page 20 - Column 2 of 2 ===
 4 For twelve years they had been subject to Kedorlaomer, but in the thirteenth
 year they rebelled.
 5 In the fourteenth year, Kedorlaomer and the kings allied with him went out and
@@ -986,9 +909,6 @@ then they went away.
 living in Sodom.
 
 
-
-# --- End of page 20 ---
-=== Page 21 - Column 1 of 2 ===
 13 One who had escaped came and reported this to Abram the Hebrew. Now Abram was
 living near the great trees of Mamre the Amorite, a brother of Eshcol and Aner,
 all of whom were allied with
@@ -1010,7 +930,6 @@ heaven and earth.
 Then Abram gave him a tenth of everything.
 
 
-=== Page 21 - Column 2 of 2 ===
 21 The king of Sodom said to Abram, "Give me the people and keep the goods for
 yourself."
 22 But Abram said to the king of Sodom, "I have raised my hand to the Lord , God
@@ -1034,9 +953,6 @@ son coming from your own body will be your heir."
 5 He took him outside and said, "Look up at the heavens and count the stars-if
 
 
-
-# --- End of page 21 ---
-=== Page 22 - Column 1 of 2 ===
 indeed you can count them." Then he said to him, "So shall your offspring be."
 6 Abram believed the Lord , and he credited it to him as righteousness.
 7 He also said to him, "I am the Lord , who brought you out of Ur of the
@@ -1060,7 +976,6 @@ the nation they serve
 as slaves, and afterward they will come out with great possessions.
 
 
-=== Page 22 - Column 2 of 2 ===
 15 You, however, will go to your fathers in peace and be buried at a good old
 age.
 16 In the fourth generation your descendants will come back here, for the sin of
@@ -1090,9 +1005,6 @@ what Sarai said.
 Egyptian maidservant Hagar and gave her to her husband to be his wife.
 
 
-
-# --- End of page 22 ---
-=== Page 23 - Column 1 of 2 ===
 4 He slept with Hagar, and she conceived. When she knew she was pregnant, she
 began to despise her mistress.
 5 Then Sarai said to Abram, "You are
@@ -1118,7 +1030,6 @@ everyone's hand against him, and he will live in hostility toward all his
 brothers."
 
 
-=== Page 23 - Column 2 of 2 ===
 13 She gave this name to the Lord who spoke to her: "You are the God who sees
 me," for she said, "I have now seen the One who sees me."
 
@@ -1142,9 +1053,6 @@ made you a father of many nations. 6 I will make you very fruitful; I will make
 nations of you, and kings will come from you.
 
 
-
-# --- End of page 23 ---
-=== Page 24 - Column 1 of 2 ===
 7 I will establish my covenant as an everlasting covenant between me and you and
 your descendants after you for the generations to come, to be your God and the
 God of your descendants after
@@ -1170,7 +1078,6 @@ Any uncircumcised male, who has not been circumcised in the flesh, will be cu
 off from his people; he has broken my covenant."
 
 
-=== Page 24 - Column 2 of 2 ===
 15 God also said to Abraham, "As for Sarai your wife, you are no longer to call
 her Sarai; her name will be Sarah.
 16 I will bless her and will surely give you a son by her. I will bless her so
@@ -1196,9 +1103,6 @@ son Ishmael and all those born in his household or bought with his money, t
 every male in his household, and circumcised them, as God told him.
 
 
-
-# --- End of page 24 ---
-=== Page 25 - Column 1 of 2 ===
 24 Abraham was ninety-nine years old when he was circumcised,
 25 and his son Ishmael was thirteen;
 
@@ -1223,7 +1127,6 @@ you say."
 of fine flour and knead it and bake some bread."
 
 
-=== Page 25 - Column 2 of 2 ===
 7 Then he ran to the herd and selected a choice, tender calf and gave it to a
 servant, who hurried to prepare it.
 
@@ -1248,9 +1151,6 @@ you did laugh."
 walked along with them to see them on their way.
 
 
-
-# --- End of page 25 ---
-=== Page 26 - Column 1 of 2 ===
 17 Then the Lord said, "Shall I hide from Abraham what I am about to do?
 18 Abraham will surely become a great
 and powerful nation, and all nations on earth will be blessed through him.
@@ -1274,7 +1174,6 @@ treating the righteous and the wicked alike. Far be it from you! Will not the
 Judge of all the earth do right?"
 
 
-=== Page 26 - Column 2 of 2 ===
 26 The Lord said, "If I find fifty righteous people in the city of Sodom, I will
 spare the whole place for their sake."
 
@@ -1304,9 +1203,6 @@ returned home.
 19 The two angels arrived at Sodom in the evening, and Lot was sitting in the
 
 
-
-# --- End of page 26 ---
-=== Page 27 - Column 1 of 2 ===
 gateway of the city. When he saw them, he got up to meet them and bowed down
 with his face to the ground.
 
@@ -1332,7 +1228,6 @@ to these men, for they have come under the protection of my roof."
 an alien, and now he wants to play the judge! We'll treat you worse than them."
 
 
-=== Page 27 - Column 2 of 2 ===
 They kept bringing pressure on Lot and moved forward to break down the door.
 10 But the men inside reached out and
 pulled Lot back into the house and shut the door.
@@ -1358,9 +1253,6 @@ his two daughters and led them safely
 out of the city, for the Lord was merciful to them.
 
 
-
-# --- End of page 27 ---
-=== Page 28 - Column 1 of 2 ===
 17 As soon as they had brought them out, one of them said, "Flee for your lives!
 Don't look back, and don't stop anywhere in the plain! Flee to the mountains or
 you will be swept away!"
@@ -1385,7 +1277,6 @@ living in the cities-and also the vegetation in the land.
 26 But Lot's wife looked back, and she became a pillar of salt.
 
 
-=== Page 28 - Column 2 of 2 ===
 27 Early the next morning Abraham got up and returned to the place where he had
 stood before the Lord .
 28 He looked down toward Sodom and Gomorrah, toward all the land of the
@@ -1411,9 +1302,6 @@ through our father."
 35 So they got their father to drink wine that night also, and the younger
 
 
-
-# --- End of page 28 ---
-=== Page 29 - Column 1 of 2 ===
 daughter went and lay with him. Again he was not aware of it when she lay down
 or when she got up.
 36 So both of Lot's daughters became pregnant by their father.
@@ -1438,7 +1326,6 @@ brother'? I have done this with a clear conscience and clean hands."
 6 Then God said to him in the dream, "Yes, I know you did this with a clear
 
 
-=== Page 29 - Column 2 of 2 ===
 conscience, and so I have kept you from sinning against me. That is why I did
 not let you touch her.
 7 Now return the man's wife, for he is a prophet, and he will pray for you and
@@ -1461,9 +1348,6 @@ brother." ' "
 14 Then Abimelech brought sheep and cattle and male and female slaves and
 
 
-
-# --- End of page 29 ---
-=== Page 30 - Column 1 of 2 ===
 gave them to Abraham, and he returned Sarah his wife to him.
 15 And Abimelech said, "My land is
 before you; live wherever you like."
@@ -1487,7 +1371,6 @@ commanded him.
 5 Abraham was a hundred years old when his son Isaac was born to him.
 
 
-=== Page 30 - Column 2 of 2 ===
 6 Sarah said, "God has brought me laughter, and everyone who hears about this
 will laugh with me."
 
@@ -1511,9 +1394,6 @@ them to Hagar. He set them on her shoulders and then sent her off with the boy.
 She went on her way and wandered in the desert of Beersheba.
 
 
-
-# --- End of page 30 ---
-=== Page 31 - Column 1 of 2 ===
 15 When the water in the skin was gone, she put the boy under one of the bushes.
 16 Then she went off and sat down nearby, about a bowshot away, for she thought,
 "I cannot watch the boy die."
@@ -1538,7 +1418,6 @@ you will not deal falsely with me or my children or my descendants. Show to
 me and the country where you are living
 
 
-=== Page 31 - Column 2 of 2 ===
 as an alien the same kindness I have shown to you."
 24 Abraham said, "I swear it."
 25 Then Abraham complained to Abimelech about a well of water that Abimelech's
@@ -1562,9 +1441,6 @@ land of the Philistines.
 the name of the Lord , the Eternal God.
 
 
-
-# --- End of page 31 ---
-=== Page 32 - Column 1 of 2 ===
 34 And Abraham stayed in the land of the Philistines for a long time.
 
 
@@ -1588,7 +1464,6 @@ lamb for the burnt offering?"
 8 Abraham answered, "God himself will provide the lamb for the burnt offering,
 
 
-=== Page 32 - Column 2 of 2 ===
 my son." And the two of them went on together.
 9 When they reached the place God had told him about, Abraham built an altar
 there and arranged the wood on it. He
@@ -1609,9 +1484,6 @@ this and have not withheld your son, your only son,
 17 I will surely bless you and make your descendants as numerous as the stars
 
 
-
-# --- End of page 32 ---
-=== Page 33 - Column 1 of 2 ===
 in the sky and as the sand on the seashore. Your descendants will take
 possession of the cities of their enemies
 18 and through your offspring all nations on earth will be blessed, because you
@@ -1636,7 +1508,6 @@ Hebron) in the land of Canaan, and Abraham went to mourn for Sarah and to weep
 over her.
 
 
-=== Page 33 - Column 2 of 2 ===
 3 Then Abraham rose from beside his dead wife and spoke to the Hittites. He ,
 said,
 4 "I am an alien and a stranger among you. Sell me some property for a burial
@@ -1660,9 +1531,6 @@ the cave that is in it. I give it to you in the presence of my people. Bury your
 dead."
 
 
-
-# --- End of page 33 ---
-=== Page 34 - Column 1 of 2 ===
 12 Again Abraham bowed down before the people of the land 13
 and he said to Ephron in their hearing, "Listen to me, if you will. I will pay
 the price of the field. Accept it from me so I
@@ -1685,7 +1553,6 @@ near Mamre (which is at Hebron) in the land of Canaan. 20 So the field and the
 cave in it were deeded to Abraham by the Hittites as a burial site.
 
 
-=== Page 34 - Column 2 of 2 ===
 24 Abraham was now old and well
 advanced in years, and the Lord had blessed him in every way.
 2 He said to the chief servant in his household, the one in charge of all that
@@ -1707,9 +1574,6 @@ with you, then you will be released from this oath of mine. Only do not take my
 son back there."
 
 
-
-# --- End of page 34 ---
-=== Page 35 - Column 1 of 2 ===
 9 So the servant put his hand under the thigh of his master Abraham and swore an
 oath to him concerning this matter.
 10 Then the servant took ten of his master's camels and left, taking with him
@@ -1738,7 +1602,6 @@ down to the spring, filled her jar and
 came up again.
 
 
-=== Page 35 - Column 2 of 2 ===
 17 The servant hurried to meet her and said, "Please give me a little water from
 your jar."
 18 "Drink, my lord," she said, and quickly lowered the jar to her hands and gave
@@ -1764,9 +1627,6 @@ straw and fodder, as well as room for you to spend the night."
 worshiped the Lord ,
 
 
-
-# --- End of page 35 ---
-=== Page 36 - Column 1 of 2 ===
 27 saying, "Praise be to the Lord , the God of my master Abraham, who has not
 abandoned his kindness and faithfulness to my master. As for me, the
 Lord has led me on the journey to the house of my master's relatives." 28 The
@@ -1794,7 +1654,6 @@ So he said, "I am Abraham's servant.
 given him sheep and cattle,
 
 
-=== Page 36 - Column 2 of 2 ===
 silver and gold, menservants and maidservants, and camels and donkeys.
 36 My master's wife Sarah has borne him a son in her old age, and he has given
 him everything he owns.
@@ -1822,9 +1681,6 @@ little water from your jar,"
 her
 
 
-
-# --- End of page 36 ---
-=== Page 37 - Column 1 of 2 ===
 be the one the Lord has chosen for my master's son.'
 45 "Before I finished praying in my heart, Rebekah came out, with her jar on her
 shoulder. She went down to the spring
@@ -1851,7 +1707,6 @@ master's son, as the Lord has directed."
 before the Lord .
 
 
-=== Page 37 - Column 2 of 2 ===
 53 Then the servant brought out gold and silver jewelry and articles of clothing
 and gave them to Rebekah; he also gave
 costly gifts to her brother and to her mother.
@@ -1879,164 +1734,3 @@ ready and mounted their camels and went back with the man. So the servant took
 Rebekah and left.
 
 
-
-# --- End of page 37 ---
-=== Page 38 - Column 1 of 2 ===
-62 Now Isaac had come from Beer Lahai Roi, for he was living in the Negev.
-63 He went out to the field one evening to meditate, and as he looked up, he saw
-camels approaching.
-64 Rebekah also looked up and saw
-Isaac. She got down from her camel
-65 and asked the servant, "Who is that
-man in the field coming to meet us?" "He is my master," the servant answered. So
-she took her veil and covered herself.
-66 Then the servant told Isaac all he had done.
-67 Isaac brought her into the tent of his mother Sarah, and he married Rebekah.
-So she became his wife, and he loved her; and Isaac was comforted after his
-mother's death.
-
-
-25Abraham took another wife,
-whose name was Keturah.
-2 She bore him Zimran, Jokshan, Medan, Midian, Ishbak and Shuah.
-3 Jokshan was the father of Sheba and Dedan; the descendants of Dedan were the
-Asshurites, the Letushites and the Leummites.
-4 The sons of Midian were Ephah, Epher, Hanoch, Abida and Eldaah. All these were
-descendants of Keturah.
-
-
-=== Page 38 - Column 2 of 2 ===
-5 Abraham left everything he owned to Isaac.
-6 But while he was still living, he gave gifts to the sons of his concubines and
-sent them away from his son Isaac to the land of the east.
-
-7 Altogether, Abraham lived a hundred and seventy-five years.
-
-8 Then Abraham breathed his last and died at a good old age, an old man and full
-of years; and he was gathered to his people.
-9 His sons Isaac and Ishmael buried him in the cave of Machpelah near Mamre, in
-the field of Ephron son of Zohar the
-Hittite,
-10 the field Abraham had bought from the Hittites. There Abraham was buried with
-his wife Sarah.
-11 After Abraham's death, God blessed his son Isaac, who then lived near Beer
-Lahai Roi.
-12
-This is the account of Abraham's son Ishmael, whom Sarah's maidservant, Hagar
-the Egyptian, bore to Abraham.
-13 These are the names of the sons of Ishmael, listed in the order of their
-birth: Nebaioth the firstborn of Ishmael, Kedar, Adbeel, Mibsam,
-14 Mishma, Dumah, Massa, 15 Hadad, Tema, Jetur, Naphish and Kedemah.
-
-
-
-# --- End of page 38 ---
-=== Page 39 - Column 1 of 2 ===
-16 These were the sons of Ishmael, and these are the names of the twelve tribal
-rulers according to their settlements and camps.
-
-17 Altogether, Ishmael lived a hundred and thirty-seven years. He breathed his
-last and died, and he was gathered to his people.
-18 His descendants settled in the area from Havilah to Shur, near the border of
-Egypt, as you go toward Asshur. And they lived in hostility toward all their
-brothers.
-
-19 This is the account of Abraham's son Isaac. Abraham became the father of
-Isaac,
-
-20 and Isaac was forty years old when he married Rebekah daughter of Bethuel the
-Aramean from Paddan Aram and
-sister of Laban the Aramean.
-21 Isaac prayed to the Lord on behalf of his wife, because she was barren. The
-Lord answered his prayer, and his wife Rebekah became pregnant.
-22
-The babies jostled each other within her, and she said, "Why is this happening
-to me?" So she went to
-inquire of the Lord . 23
-The Lord said to her, "Two nations are in your womb, and two peoples from
-within you will be separated; one people will be stronger than the other, and
-the
-older will serve the younger."
-24 When the time came for her to give birth, there were twin boys in her womb.
-
-
-=== Page 39 - Column 2 of 2 ===
-25 The first to come out was red, and his whole body was like a hairy garment;
-so they named him Esau.
-26 After this, his brother came out, with
-his hand grasping Esau's heel; so he was named Jacob. Isaac was sixty years old
-when Rebekah gave birth to them.
-27 The boys grew up, and Esau became a skillful hunter, a man of the open
-country, while Jacob was a quiet man, staying among the tents.
-28 Isaac, who had a taste for wild game,
-loved Esau, but Rebekah loved Jacob.
-29 Once when Jacob was cooking some stew, Esau came in from the open
-country, famished.
-30 He said to Jacob, "Quick, let me have some of that red stew! I'm famished!"
-(That is why he was also called Edom. )
-
-31 Jacob replied, "First sell me your birthright."
-32
-"Look, I am about to die," Esau said. "What good is the birthright to me?"
-33 But Jacob said, "Swear to me first." So he swore an oath to him, selling his
-birthright to Jacob.
-34 Then Jacob gave Esau some bread and some lentil stew. He ate and drank,
-and then got up and left. So Esau
-despised his birthright.
-
-
-
-# --- End of page 39 ---
-=== Page 40 - Column 1 of 2 ===
-26Now there was a famine in the
-land-besides the earlier famine of Abraham's time-and Isaac went to Abimelech
-king of the Philistines in Gerar.
-2 The Lord appeared to Isaac and said, "Do not go down to Egypt; live in the
-land where I tell you to live.
-3 Stay in this land for a while, and I will be with you and will bless you. For
-to you and your descendants I will give all these lands and will confirm the
-oath I swore to your father Abraham.
-4 I will make your descendants as numerous as the stars in the sky and will give
-them all these lands, and through your offspring all nations on
-earth will be blessed,
-5 because Abraham obeyed me and kept
-my requirements, my commands, my decrees and my laws."
-6 So Isaac stayed in Gerar.
-7 When the men of that place asked him about his wife, he said, "She is my
-sister," because he was afraid to say, "She is my wife." He thought, "The men
-of this place might kill me on account of Rebekah, because she is beautiful."
-8 When Isaac had been there a long time,
-Abimelech king of the Philistines looked down from a window and saw Isaac
-caressing his wife Rebekah.
-9 So Abimelech summoned Isaac and said, "She is really your wife! Why did
-
-
-=== Page 40 - Column 2 of 2 ===
-you say, 'She is my sister'?" Isaac answered him, "Because I thought I might
-lose my life on account of her."
-10 Then Abimelech said, "What is this you have done to us? One of the men might
-well have slept with your wife, and
-you would have brought guilt upon us." 11 So Abimelech gave orders to all the
-people: "Anyone who molests this man
-or his wife shall surely be put to death." 12 Isaac planted crops in that land
-and the same year reaped a hundredfold, because the Lord blessed him.
-13 The man became rich, and his wealth continued to grow until he became very
-wealthy.
-14 He had so many flocks and herds and servants that the Philistines envied him.
-
-15 So all the wells that his father's servants had dug in the time of his father
-Abraham, the Philistines stopped up, filling them with earth.
-
-16 Then Abimelech said to Isaac, "Move away from us; you have become too
-powerful for us."
-17 So Isaac moved away from there and encamped in the Valley of Gerar and
-settled there.
-
-18 Isaac reopened the wells that had been dug in the time of his father Abraham,
-which the Philistines had stopped up after Abraham died, and he gave them the
-same names his father
-had given them.
-
-
-
-# --- End of page 40 ---

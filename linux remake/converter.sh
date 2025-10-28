@@ -78,8 +78,8 @@ page_num = int(sys.argv[2])
 text = page_path.read_text(encoding='utf-8')
 lines = text.splitlines()
 if not lines:
-    # empty page, write a blank separator
-    print(f"=== Page {page_num} (empty) ===\n")
+    # empty page: emit a single blank line to preserve paragraph separation
+    print('')
     sys.exit(0)
 
 # Normalize tab characters into spaces
@@ -150,7 +150,7 @@ if not filtered_runs:
         return '\n'.join(out)
 
     reflowed = reflow_text(lines)
-    print(f"=== Page {page_num} ===")
+    # emit reflowed text for single-column page
     print(reflowed)
     print('\n')
     sys.exit(0)
@@ -201,17 +201,13 @@ for idx, (cs, ce) in enumerate(col_ranges, start=1):
         return '\n'.join(out)
 
     reflowed = reflow_text(col_lines)
-    print(f"=== Page {page_num} - Column {idx} of {len(col_ranges)} ===")
+    # emit reflowed text for this column (no markers)
     print(reflowed)
     print('\n')
 
 PY
 
-    # Append a simple page footer to the output file
-    cat >> "$OUTPUT_TXT" <<EOF
-
-# --- End of page $p ---
-EOF
+        # (no footer markers; python output is already redirected into the output file)
 
 done
 
