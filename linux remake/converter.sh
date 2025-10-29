@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-# converter.sh - Convert PDF to TXT, page-by-page, splitting multi-column pages into separate pages when there is a blank-space vertical separator.
-# Usage: ./converter.sh input.pdf output.txt [max_pages]
-# Dependencies: pdfinfo, pdftotext (from poppler), python3, fmt (optional)
+# converter.sh - Convert PDF to TXT or CSV.
+# - Default behavior: convert PDF -> TXT (preserves reflowed paragraphs, splits columns when vertical blank separators exist).
+# - New: if output filename ends with .csv, script will convert the first N pages (default 50) to TXT then parse that TXT into CSV
+#   with headers: BOOK, CHAPTER, VERSE, DESCRIPTION.
+# Usage: ./converter.sh input.pdf output.(txt|csv) [max_pages] [book_name]
+# Dependencies: pdfinfo, pdftotext (from poppler), python3
 
 set -euo pipefail
 IFS=$'\n\t'
 
 if [[ "$#" -lt 2 ]]; then
-    echo "Usage: $0 input.pdf output.txt [max_pages]" >&2
+    echo "Usage: $0 input.pdf output.(txt|csv) [max_pages] [book_name]" >&2
     exit 2
 fi
 
 INPUT_PDF="$1"
-OUTPUT_TXT="$2"
+OUTPUT_FILE="$2"
+MAX_PAGES_ARG=${3-}
+BOOK_NAME=${4-}
 
 # Check dependencies
 for cmd in pdfinfo pdftotext python3; do
@@ -26,49 +31,35 @@ done
 TMPDIR=$(mktemp -d -t converter.XXXXXX)
 trap 'rm -rf "${TMPDIR}"' EXIT
 
-# Get number of pages
-PAGES=$(pdfinfo "$INPUT_PDF" | awk '/^Pages:/ {print $2}')
-if [[ -z "$PAGES" ]]; then
+
+# Function: pdf_to_txt input.pdf output.txt max_pages
+# Processes up to max_pages (if empty, all pages) and appends reflowed text into output.txt
+pdf_to_txt() {
+  local in_pdf="$1" out_txt="$2" maxp="$3"
+  : > "$out_txt"
+
+  # Get number of pages
+  local pages
+  pages=$(pdfinfo "$in_pdf" | awk '/^Pages:/ {print $2}') || pages=0
+  if [[ -z "$pages" || "$pages" -eq 0 ]]; then
     echo "Could not determine number of pages." >&2
-    exit 4
-fi
+    return 4
+  fi
 
-# Optional max pages argument
-MAX_PAGES=$(( PAGES ))
-if [[ ${3-} != "" ]]; then
-    if ! [[ "${3}" =~ ^[0-9]+$ ]]; then
-        echo "max_pages must be a positive integer" >&2
-        exit 5
-    fi
-    MAX_PAGES=${3}
-    if (( MAX_PAGES < 1 )); then
-        echo "max_pages must be >= 1" >&2
-        exit 5
-    fi
-fi
+  local toproc
+  if [[ -n "$maxp" ]]; then
+    toproc=$(( pages < maxp ? pages : maxp ))
+  else
+    toproc=$pages
+  fi
 
-# We'll process up to the smaller of PAGES and MAX_PAGES
-if (( MAX_PAGES < PAGES )); then
-    PAGES_TO_PROCESS=$MAX_PAGES
-else
-    PAGES_TO_PROCESS=$PAGES
-fi
-if [[ -z "$PAGES" ]]; then
-  echo "Could not determine number of pages." >&2
-  exit 4
-fi
+  for ((p=1; p<=toproc; p++)); do
+    PAGE_FILE="$TMPDIR/page-${p}.txt"
+    pdftotext -f "$p" -l "$p" -layout -enc UTF-8 "$in_pdf" "$PAGE_FILE"
 
-# Prepare/clear output
-: > "$OUTPUT_TXT"
-
-# For each page, extract layout-preserved text and post-process with embedded Python
-for ((p=1; p<=PAGES_TO_PROCESS; p++)); do
-  PAGE_FILE="$TMPDIR/page-${p}.txt"
-  pdftotext -f "$p" -l "$p" -layout -enc UTF-8 "$INPUT_PDF" "$PAGE_FILE"
-
-  # Call python to detect column separators and output column texts to stdout
+    # Call python to detect column separators and output column texts to stdout
     # Append the python output directly into the output file so it's saved
-    python3 - "$PAGE_FILE" "$p" <<'PY' >> "$OUTPUT_TXT"
+    python3 - "$PAGE_FILE" "$p" <<'PY' >> "$out_txt"
 import sys
 import textwrap
 from pathlib import Path
@@ -206,10 +197,94 @@ for idx, (cs, ce) in enumerate(col_ranges, start=1):
     print('\n')
 
 PY
+  done
+}
 
-        # (no footer markers; python output is already redirected into the output file)
 
-done
+# Function: txt_to_csv input.txt output.csv book_name
+# A simple parser that splits on verse numbers at line starts and emits CSV rows
+txt_to_csv() {
+  local in_txt="$1" out_csv="$2" book_name="$3"
+  python3 - "$in_txt" "$out_csv" "$book_name" <<'PY'
+import sys
+import csv
+from pathlib import Path
+import re
 
-echo "Conversion complete: $OUTPUT_TXT"
+in_path = Path(sys.argv[1])
+out_path = Path(sys.argv[2])
+book = sys.argv[3] if len(sys.argv) > 3 else ''
+text = in_path.read_text(encoding='utf-8')
+
+# Normalize newlines
+text = text.replace('\r\n', '\n')
+
+# We'll scan for two kinds of markers at line starts (multiline mode):
+# 1) Chapter marker: digits immediately followed by letters (e.g. "3Now...") -> chapter=N, verse=1
+# 2) Verse marker: digits followed by whitespace (e.g. "17 When...") -> verse=M, chapter stays the last seen
+pattern = re.compile(r'(?m)^\s*(?:(\d+)\s+|(\d+)(?=[A-Za-z]))')
+
+rows = []
+current_chapter = ''
+matches = list(pattern.finditer(text))
+if matches:
+    for i, m in enumerate(matches):
+        if m.group(1):
+            # standard verse marker (number + space)
+            verse = m.group(1)
+            # description starts after the matched marker
+            start = m.end()
+            end = matches[i+1].start() if i+1 < len(matches) else len(text)
+            desc = text[start:end].strip().replace('\n', ' ')
+            if desc:
+                rows.append((book, current_chapter, verse, ' '.join(desc.split())))
+        else:
+            # chapter marker (digits immediately followed by text) -> chapter=N, verse=1
+            chap = m.group(2)
+            current_chapter = chap
+            verse = '1'
+            start = m.end()
+            end = matches[i+1].start() if i+1 < len(matches) else len(text)
+            desc = text[start:end].strip().replace('\n', ' ')
+            if desc:
+                rows.append((book, current_chapter, verse, ' '.join(desc.split())))
+else:
+    # No clear markers: split into paragraphs
+    paras = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+    for p in paras:
+        rows.append((book, '', '', ' '.join(p.split())))
+
+with out_path.open('w', encoding='utf-8', newline='') as f:
+    w = csv.writer(f)
+    w.writerow(['BOOK','CHAPTER','VERSE','DESCRIPTION'])
+    for r in rows:
+        w.writerow(r)
+
+print(f'Wrote CSV with {len(rows)} rows to {out_path}', file=sys.stderr)
+PY
+}
+
+
+# Main: if output filename ends with .csv, run pdf->txt (up to max pages) then txt->csv
+if [[ "${OUTPUT_FILE,,}" == *.csv ]]; then
+  # default max pages for CSV conversion is 50 unless provided
+  if [[ -z "$MAX_PAGES_ARG" ]]; then
+    MAX_PAGES=50
+  else
+    MAX_PAGES="$MAX_PAGES_ARG"
+  fi
+  INTERMEDIATE="$TMPDIR/intermediate.txt"
+  pdf_to_txt "$INPUT_PDF" "$INTERMEDIATE" "$MAX_PAGES"
+  txt_to_csv "$INTERMEDIATE" "$OUTPUT_FILE" "$BOOK_NAME"
+  echo "CSV conversion complete: $OUTPUT_FILE"
+  exit 0
+fi
+
+# Otherwise default: produce TXT (honor optional max pages arg)
+if [[ -n "$MAX_PAGES_ARG" ]]; then
+  pdf_to_txt "$INPUT_PDF" "$OUTPUT_FILE" "$MAX_PAGES_ARG"
+else
+  pdf_to_txt "$INPUT_PDF" "$OUTPUT_FILE" ""
+fi
+
 exit 0
