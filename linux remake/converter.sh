@@ -227,8 +227,58 @@ pattern = re.compile(r'(?m)^\s*(\d+)(\s*)')
 rows = []
 current_chapter = ''
 matches = list(pattern.finditer(text))
+# If book not provided, attempt to auto-detect by looking for a book-name line
+# immediately before the first numeric marker. Use a small whitelist of common
+# book names including numeric prefixes (1/2/3) to match variants like "2 Corinthians".
+if not book and matches:
+    m0 = matches[0]
+    # take text before first marker, find last non-empty line/paragraph
+    before = text[:m0.start()].rstrip()
+    candidate = ''
+    if before:
+        # look for last paragraph (split by blank line) then last line
+        parts = [p.strip() for p in re.split(r'\n\s*\n', before) if p.strip()]
+        if parts:
+            last_para = parts[-1]
+            # take last non-empty line from that paragraph
+            lines = [l.strip() for l in last_para.splitlines() if l.strip()]
+            if lines:
+                candidate = lines[-1]
+            else:
+                candidate = last_para.strip().splitlines()[-1].strip()
+
+    # Normalize candidate and check against common book names
+    if candidate:
+        norm = re.sub(r'[^A-Za-z0-9\s]', ' ', candidate).strip()
+        # common names (not exhaustive) — include numeric prefixes
+        books = [
+            'Genesis','Exodus','Leviticus','Numbers','Deuteronomy','Joshua','Judges','Ruth',
+            '1 Samuel','2 Samuel','1 Kings','2 Kings','1 Chronicles','2 Chronicles',
+            'Ezra','Nehemiah','Esther','Job','Psalms','Proverbs','Ecclesiastes','Song of Solomon',
+            'Isaiah','Jeremiah','Lamentations','Ezekiel','Daniel','Hosea','Joel','Amos','Obadiah',
+            'Jonah','Micah','Nahum','Habakkuk','Zephaniah','Haggai','Zechariah','Malachi',
+            'Matthew','Mark','Luke','John','Acts','Romans','1 Corinthians','2 Corinthians',
+            'Galatians','Ephesians','Philippians','Colossians','1 Thessalonians','2 Thessalonians',
+            '1 Timothy','2 Timothy','Titus','Philemon','Hebrews','James','1 Peter','2 Peter',
+            '1 John','2 John','3 John','Jude','Revelation'
+        ]
+        # match case-insensitive; allow '1st'/'2nd' variants
+        found = ''
+        for b in books:
+            if re.search(r'\b' + re.escape(b) + r'\b', norm, flags=re.I):
+                found = b
+                break
+            # allow '1st'/'2nd' prefixes like '1st Peter'
+            alt = b.replace('1 ', '1st ').replace('2 ', '2nd ').replace('3 ', '3rd ')
+            if re.search(r'\b' + re.escape(alt) + r'\b', norm, flags=re.I):
+                found = b
+                break
+
+        if found:
+            book = found
 if matches:
     last_verse = None
+    previous_chapter = ''
     for i, m in enumerate(matches):
         num = int(m.group(1))
         has_space = bool(m.group(2))
@@ -253,6 +303,25 @@ if matches:
         if not has_space and next_char.isupper():
             # immediate chapter marker
             current_chapter = str(num)
+            # If book wasn't provided, or we've rolled over to a new book (chapter resets to 1),
+            # try to detect the book name from text. If chapter==1 and previous_chapter indicates
+            # we were in a prior book, overwrite the book name.
+            if (not book) or (current_chapter == '1' and previous_chapter and previous_chapter != '1'):
+                try:
+                    para_start = text.rfind('\n\n', 0, m.start())
+                    if para_start == -1:
+                        para_start = text.rfind('\n', 0, m.start())
+                        if para_start == -1:
+                            para_start = max(0, m.start() - 300)
+                    snippet = text[para_start:m.start()].strip()
+                    lines = [ln.strip() for ln in snippet.splitlines() if ln.strip()]
+                    if lines:
+                        candidate = lines[-1]
+                        # strip surrounding punctuation
+                        candidate = re.sub(r'^[^A-Za-z0-9]*(.*?)[^A-Za-z0-9]*$', r'\1', candidate)
+                        book = ' '.join(candidate.split())
+                except Exception:
+                    pass
             current_marker_chapter = current_chapter
             current_marker_verse = 1
             last_verse = 1
@@ -290,6 +359,22 @@ if matches:
 
                 if is_chapter:
                     current_chapter = str(num)
+                    # detect book name if not provided OR if chapter resets to 1 (new book)
+                    if (not book) or (current_chapter == '1' and previous_chapter and previous_chapter != '1'):
+                        try:
+                            para_start = text.rfind('\n\n', 0, m.start())
+                            if para_start == -1:
+                                para_start = text.rfind('\n', 0, m.start())
+                                if para_start == -1:
+                                    para_start = max(0, m.start() - 300)
+                            snippet = text[para_start:m.start()].strip()
+                            lines = [ln.strip() for ln in snippet.splitlines() if ln.strip()]
+                            if lines:
+                                candidate = lines[-1]
+                                candidate = re.sub(r'^[^A-Za-z0-9]*(.*?)[^A-Za-z0-9]*$', r'\1', candidate)
+                                book = ' '.join(candidate.split())
+                        except Exception:
+                            pass
                     current_marker_chapter = current_chapter
                     current_marker_verse = 1
                     last_verse = 1
@@ -359,6 +444,23 @@ if matches:
                     if segment:
                         rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
                     current_chapter = str(im_num)
+                    # detect book name if not provided
+                    if not book:
+                        try:
+                            # search back from the overall match start (m.start()) for a title
+                            para_start = text.rfind('\n\n', 0, m.start())
+                            if para_start == -1:
+                                para_start = text.rfind('\n', 0, m.start())
+                                if para_start == -1:
+                                    para_start = max(0, m.start() - 300)
+                            snippet = text[para_start:m.start()].strip()
+                            lines = [ln.strip() for ln in snippet.splitlines() if ln.strip()]
+                            if lines:
+                                candidate = lines[-1]
+                                candidate = re.sub(r'^[^A-Za-z0-9]*(.*?)[^A-Za-z0-9]*$', r'\1', candidate)
+                                book = ' '.join(candidate.split())
+                        except Exception:
+                            book = book
                     current_marker_chapter = current_chapter
                     current_marker_verse = 1
                     last_verse = 1
@@ -373,11 +475,30 @@ if matches:
         if tail:
             rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(tail.split())))
 
+        # update previous_chapter tracker for detecting book rollovers
+        if current_chapter:
+            previous_chapter = current_chapter
+
 else:
     # No clear markers: split into paragraphs
     paras = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
     for p in paras:
         rows.append((book, '', '', ' '.join(p.split())))
+
+# Option: drop any rows before the first real chapter (e.g., Genesis 1:1)
+# User requested to ignore everything before the first chapter. Find the first row
+# where CHAPTER=='1' and VERSE=='1' and DESCRIPTION looks like the opening verse,
+# and trim earlier rows.
+start_idx = 0
+for i, r in enumerate(rows):
+    ch = r[1]
+    v = r[2]
+    desc = (r[3] or '').lower()
+    if ch == '1' and v == '1' and 'in the beginning' in desc:
+        start_idx = i
+        break
+
+rows = rows[start_idx:]
 
 with out_path.open('w', encoding='utf-8', newline='') as f:
     w = csv.writer(f)
