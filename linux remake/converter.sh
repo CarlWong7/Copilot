@@ -219,35 +219,160 @@ text = in_path.read_text(encoding='utf-8')
 # Normalize newlines
 text = text.replace('\r\n', '\n')
 
-# We'll scan for two kinds of markers at line starts (multiline mode):
-# 1) Chapter marker: digits immediately followed by letters (e.g. "3Now...") -> chapter=N, verse=1
-# 2) Verse marker: digits followed by whitespace (e.g. "17 When...") -> verse=M, chapter stays the last seen
-pattern = re.compile(r'(?m)^\s*(?:(\d+)\s+|(\d+)(?=[A-Za-z]))')
+# We'll scan for numeric markers at line starts (multiline mode). We'll first attempt to
+# interpret a match as a verse by comparing to the last seen verse. If it doesn't follow
+# the expected verse sequence (last_verse + 1), we'll treat it as a chapter marker.
+pattern = re.compile(r'(?m)^\s*(\d+)(\s*)')
 
 rows = []
 current_chapter = ''
 matches = list(pattern.finditer(text))
 if matches:
+    last_verse = None
     for i, m in enumerate(matches):
-        if m.group(1):
-            # standard verse marker (number + space)
-            verse = m.group(1)
-            # description starts after the matched marker
-            start = m.end()
-            end = matches[i+1].start() if i+1 < len(matches) else len(text)
-            desc = text[start:end].strip().replace('\n', ' ')
-            if desc:
-                rows.append((book, current_chapter, verse, ' '.join(desc.split())))
+        num = int(m.group(1))
+        has_space = bool(m.group(2))
+        # peek next character after the match
+        nxt_idx = m.end()
+        next_char = text[nxt_idx] if nxt_idx < len(text) else ''
+
+        # compute description span
+        start = m.end()
+        end = matches[i+1].start() if i+1 < len(matches) else len(text)
+        desc = text[start:end].strip().replace('\n', ' ')
+
+        # We'll split the description if there are inline numeric markers (e.g. "2And...")
+        # Inline markers may be followed by lowercase or uppercase; however, when
+        # promoting a numeric token to a chapter we require the following character to
+        # be uppercase (user rule). We therefore match any letter here and check case
+        # at decision time.
+        inline_pat = re.compile(r'(\d+)(\s*)(?=[A-Za-z])')
+
+        # Glue chapter override: numbers immediately followed by letters with no space
+        # (e.g. "17When Abram...") are guaranteed chapter markers per user rule.
+        if not has_space and next_char.isupper():
+            # immediate chapter marker
+            current_chapter = str(num)
+            current_marker_chapter = current_chapter
+            current_marker_verse = 1
+            last_verse = 1
         else:
-            # chapter marker (digits immediately followed by text) -> chapter=N, verse=1
-            chap = m.group(2)
-            current_chapter = chap
-            verse = '1'
-            start = m.end()
-            end = matches[i+1].start() if i+1 < len(matches) else len(text)
-            desc = text[start:end].strip().replace('\n', ' ')
-            if desc:
-                rows.append((book, current_chapter, verse, ' '.join(desc.split())))
+            # Verse-first detection using sequencing
+            is_verse = False
+            if last_verse is None:
+                if num == 1:
+                    is_verse = True
+            else:
+                if num == last_verse + 1:
+                    is_verse = True
+
+            if is_verse:
+                current_marker_chapter = current_chapter
+                current_marker_verse = num
+                # warn if first verse is unexpected
+                if last_verse is None and current_marker_verse != 1:
+                    print(f'WARNING: first verse in chapter {current_chapter or "<unknown>"} is {current_marker_verse} (expected 1)', file=sys.stderr)
+                last_verse = current_marker_verse
+            else:
+                # Verse detection failed (not sequential). Defer to chapter detection rules.
+                is_chapter = False
+                # Case A: digits immediately followed by an uppercase letter (no space)
+                if not has_space and next_char.isupper():
+                    is_chapter = True
+                # Case B: digits followed by space then an uppercase word — treat as chapter
+                # if the number is exactly one greater than the last seen chapter (user heuristic).
+                elif has_space and next_char.isupper() and current_chapter:
+                    try:
+                        if num == int(current_chapter) + 1:
+                            is_chapter = True
+                    except Exception:
+                        pass
+
+                if is_chapter:
+                    current_chapter = str(num)
+                    current_marker_chapter = current_chapter
+                    current_marker_verse = 1
+                    last_verse = 1
+                else:
+                    # Not a chapter according to rules — treat the numeric token as part of the
+                    # description text (do not consume it as a marker). Prepend the numeric token
+                    # back onto the description so it remains in-line with the text.
+                    token = str(num) + (m.group(2) or '')
+                    desc = token + desc
+                    # keep current_marker_* unchanged and do not update last_verse
+
+        # Walk through the desc and split at inline markers when they appear
+        pos = 0
+        for im in inline_pat.finditer(desc):
+            im_num = int(im.group(1))
+            im_start = im.start()
+            im_end = im.end()
+            segment = desc[pos:im_start].strip()
+
+            # Inspect the next character in the description after the inline token
+            next_char_inline = desc[im_end] if im_end < len(desc) else ''
+            has_space_inline = bool(im.group(2))
+
+            # Glue-inline override: if digits are immediately followed by a letter
+            # with no space and that letter is uppercase, this is a guaranteed chapter marker.
+            if not has_space_inline and next_char_inline.isupper():
+                # append the text before this inline chapter
+                if segment:
+                    rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
+                current_chapter = str(im_num)
+                current_marker_chapter = current_chapter
+                current_marker_verse = 1
+                last_verse = 1
+                pos = im_end
+                continue
+
+            # Decide if inline token is verse (sequence) or chapter (promote)
+            inline_is_verse = False
+            if last_verse is None:
+                if im_num == 1:
+                    inline_is_verse = True
+            else:
+                if im_num == last_verse + 1:
+                    inline_is_verse = True
+
+            if inline_is_verse:
+                # append the text before this inline verse
+                if segment:
+                    rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
+                current_marker_verse = im_num
+                last_verse = im_num
+                pos = im_end
+            else:
+                # Verse sequencing failed for inline token; defer to chapter detection
+                is_chapter_inline = False
+                if not has_space_inline and next_char_inline.isupper():
+                    is_chapter_inline = True
+                elif has_space_inline and next_char_inline.isupper() and current_chapter:
+                    try:
+                        if im_num == int(current_chapter) + 1:
+                            is_chapter_inline = True
+                    except Exception:
+                        pass
+
+                if is_chapter_inline:
+                    # append the text before this inline chapter
+                    if segment:
+                        rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
+                    current_chapter = str(im_num)
+                    current_marker_chapter = current_chapter
+                    current_marker_verse = 1
+                    last_verse = 1
+                    pos = im_end
+                else:
+                    # Not a chapter: treat as part of the description (do not split)
+                    # leave pos unchanged so the numeric token remains in subsequent segment
+                    continue
+
+        # trailing segment after last inline marker
+        tail = desc[pos:].strip()
+        if tail:
+            rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(tail.split())))
+
 else:
     # No clear markers: split into paragraphs
     paras = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
