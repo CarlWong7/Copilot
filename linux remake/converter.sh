@@ -210,6 +210,7 @@ import sys
 import csv
 from pathlib import Path
 import re
+import difflib
 
 in_path = Path(sys.argv[1])
 out_path = Path(sys.argv[2])
@@ -218,6 +219,96 @@ text = in_path.read_text(encoding='utf-8')
 
 # Normalize newlines
 text = text.replace('\r\n', '\n')
+
+# -- book name helpers -------------------------------------------------
+# canonical book list used for detection and fuzzy-correction
+books = [
+    'Genesis','Exodus','Leviticus','Numbers','Deuteronomy','Joshua','Judges','Ruth',
+    '1 Samuel','2 Samuel','1 Kings','2 Kings','1 Chronicles','2 Chronicles',
+    'Ezra','Nehemiah','Esther','Job','Psalms','Proverbs','Ecclesiastes','Song of Solomon',
+    'Isaiah','Jeremiah','Lamentations','Ezekiel','Daniel','Hosea','Joel','Amos','Obadiah',
+    'Jonah','Micah','Nahum','Habakkuk','Zephaniah','Haggai','Zechariah','Malachi',
+    'Matthew','Mark','Luke','John','Acts','Romans','1 Corinthians','2 Corinthians',
+    'Galatians','Ephesians','Philippians','Colossians','1 Thessalonians','2 Thessalonians',
+    '1 Timothy','2 Timothy','Titus','Philemon','Hebrews','James','1 Peter','2 Peter',
+    '1 John','2 John','3 John','Jude','Revelation'
+]
+
+def _normalize_key(s):
+    s2 = s.lower()
+    s2 = re.sub(r'\b1st\b', '1', s2)
+    s2 = re.sub(r'\b2nd\b', '2', s2)
+    s2 = re.sub(r'\b3rd\b', '3', s2)
+    s2 = re.sub(r'[^a-z0-9]', '', s2)
+    return s2
+
+# build a normalized -> canonical mapping (include 1st/2nd/3rd variants)
+books_map = {}
+for b in books:
+    books_map[_normalize_key(b)] = b
+    alt = b.replace('1 ', '1st ').replace('2 ', '2nd ').replace('3 ', '3rd ')
+    books_map[_normalize_key(alt)] = b
+
+def best_book(candidate):
+    """Return canonical book name for candidate using exact or fuzzy match.
+    Returns None if no reasonable match found.
+    """
+    if not candidate:
+        return None
+    norm = re.sub(r'[^A-Za-z0-9\s]', ' ', candidate).strip()
+    # direct regex match. For numbered books ("1 Chronicles"), accept
+    # ordinal variants like "1st", "2nd", "3rd" and optional punctuation/spacing.
+    for b in books:
+        # If book starts with a leading digit (e.g., '1 Chronicles'), build
+        # a flexible regex to match '1 Chronicles', '1st Chronicles', '1st.Chronicles',
+        # and variants with or without a space between the number and name.
+        parts = b.split(None, 1)
+        if len(parts) == 2 and parts[0].isdigit():
+            num, rest = parts
+            pattern = r'\b' + re.escape(num) + r'(?:st|nd|rd|th)?\.?\s*' + re.escape(rest) + r'\b'
+            if re.search(pattern, norm, flags=re.I):
+                return b
+            # also accept '1stSamuel' (no space) just in case OCR removed spacing
+            pattern_ns = r'\b' + re.escape(num) + r'(?:st|nd|rd|th)?\.?'+ re.escape(rest) + r'\b'
+            if re.search(pattern_ns, norm, flags=re.I):
+                return b
+        else:
+            # non-numbered books: normal word-boundary match
+            if re.search(r'\b' + re.escape(b) + r'\b', norm, flags=re.I):
+                return b
+            alt = b.replace('1 ', '1st ').replace('2 ', '2nd ').replace('3 ', '3rd ')
+            if re.search(r'\b' + re.escape(alt) + r'\b', norm, flags=re.I):
+                return b
+    # fuzzy fallback
+    cand_key = _normalize_key(norm)
+    keys = list(books_map.keys())
+    matches = difflib.get_close_matches(cand_key, keys, n=1, cutoff=0.6)
+    if matches:
+        found = books_map[matches[0]]
+        print(f'INFO: fuzzy matched book candidate "{candidate}" -> "{found}"', file=sys.stderr)
+        return found
+    return None
+
+def find_book_backward(full_text, start_idx, max_lines=6):
+    """Scan backward from start_idx to find a candidate line that matches a book.
+    Return canonical book name or None.
+    """
+    if start_idx is None or start_idx <= 0:
+        return None
+    snippet = full_text[:start_idx]
+    # split into lines and walk backwards skipping empties
+    lines = [ln.strip() for ln in snippet.splitlines() if ln.strip()]
+    if not lines:
+        return None
+    # consider up to max_lines previous non-empty lines
+    for ln in reversed(lines[-max_lines:]):
+        fb = best_book(ln)
+        if fb:
+            print(f'INFO: backward-matched book candidate "{ln}" -> "{fb}"', file=sys.stderr)
+            return fb
+    return None
+
+# ----------------------------------------------------------------------
 
 # We'll scan for numeric markers at line starts (multiline mode). We'll first attempt to
 # interpret a match as a verse by comparing to the last seen verse. If it doesn't follow
@@ -247,7 +338,9 @@ if not book and matches:
             else:
                 candidate = last_para.strip().splitlines()[-1].strip()
 
-    # Normalize candidate and check against common book names
+    # Normalize candidate and check against common book names. If no direct match
+    # is found, use a fuzzy nearest-match lookup to pick the closest canonical
+    # book name (e.g. "1st Chronicl" -> "1 Chronicles").
     if candidate:
         norm = re.sub(r'[^A-Za-z0-9\s]', ' ', candidate).strip()
         # common names (not exhaustive) — include numeric prefixes
@@ -262,17 +355,44 @@ if not book and matches:
             '1 Timothy','2 Timothy','Titus','Philemon','Hebrews','James','1 Peter','2 Peter',
             '1 John','2 John','3 John','Jude','Revelation'
         ]
-        # match case-insensitive; allow '1st'/'2nd' variants
+
+        # Helper: normalize strings to compact alphanumeric key for fuzzy matching
+        import difflib
+        def _normalize_key(s):
+            s2 = s.lower()
+            # normalize ordinal prefixes like '1st' -> '1'
+            s2 = re.sub(r'\b1st\b', '1', s2)
+            s2 = re.sub(r'\b2nd\b', '2', s2)
+            s2 = re.sub(r'\b3rd\b', '3', s2)
+            s2 = re.sub(r'[^a-z0-9]', '', s2)
+            return s2
+
+        # Build mapping of normalized keys -> canonical book name (include alt forms)
+        books_map = {}
+        for b in books:
+            books_map[_normalize_key(b)] = b
+            alt = b.replace('1 ', '1st ').replace('2 ', '2nd ').replace('3 ', '3rd ')
+            books_map[_normalize_key(alt)] = b
+
+        # Try direct regex match first (case-insensitive, word boundaries)
         found = ''
         for b in books:
             if re.search(r'\b' + re.escape(b) + r'\b', norm, flags=re.I):
                 found = b
                 break
-            # allow '1st'/'2nd' prefixes like '1st Peter'
             alt = b.replace('1 ', '1st ').replace('2 ', '2nd ').replace('3 ', '3rd ')
             if re.search(r'\b' + re.escape(alt) + r'\b', norm, flags=re.I):
                 found = b
                 break
+
+        # Fallback: fuzzy match the normalized candidate against the normalized book keys
+        if not found:
+            cand_key = _normalize_key(norm)
+            keys = list(books_map.keys())
+            matches = difflib.get_close_matches(cand_key, keys, n=1, cutoff=0.6)
+            if matches:
+                found = books_map[matches[0]]
+                print(f'INFO: fuzzy matched book candidate "{candidate}" -> "{found}"', file=sys.stderr)
 
         if found:
             book = found
@@ -282,14 +402,23 @@ if matches:
     for i, m in enumerate(matches):
         num = int(m.group(1))
         has_space = bool(m.group(2))
-        # peek next character after the match
+        # peek next non-quote character after the match (skip quotation marks)
+        def _next_non_quote(s, idx):
+            q = '"“”‘’\'\n\r\t'
+            i = idx
+            while i < len(s) and s[i] in q:
+                i += 1
+            return s[i] if i < len(s) else ''
+
         nxt_idx = m.end()
-        next_char = text[nxt_idx] if nxt_idx < len(text) else ''
+        next_char = _next_non_quote(text, nxt_idx)
 
         # compute description span
         start = m.end()
         end = matches[i+1].start() if i+1 < len(matches) else len(text)
         desc = text[start:end].strip().replace('\n', ' ')
+        # a quote-stripped version of desc for condition checks
+        desc_check = re.sub(r'[\"“”‘’]', '', desc)
 
         # We'll split the description if there are inline numeric markers (e.g. "2And...")
         # Inline markers may be followed by lowercase or uppercase; however, when
@@ -319,7 +448,14 @@ if matches:
                         candidate = lines[-1]
                         # strip surrounding punctuation
                         candidate = re.sub(r'^[^A-Za-z0-9]*(.*?)[^A-Za-z0-9]*$', r'\1', candidate)
-                        book = ' '.join(candidate.split())
+                        found_book = best_book(candidate)
+                        if not found_book:
+                            # try scanning backward a few lines for a clearer heading
+                            found_book = find_book_backward(text, m.start(), max_lines=6)
+                        if found_book:
+                            book = found_book
+                        else:
+                            book = ' '.join(candidate.split())
                 except Exception:
                     pass
             current_marker_chapter = current_chapter
@@ -372,7 +508,14 @@ if matches:
                             if lines:
                                 candidate = lines[-1]
                                 candidate = re.sub(r'^[^A-Za-z0-9]*(.*?)[^A-Za-z0-9]*$', r'\1', candidate)
-                                book = ' '.join(candidate.split())
+                                found_book = best_book(candidate)
+                                if not found_book:
+                                    # try scanning backward a few lines for a clearer heading
+                                    found_book = find_book_backward(text, m.start(), max_lines=6)
+                                if found_book:
+                                    book = found_book
+                                else:
+                                    book = ' '.join(candidate.split())
                         except Exception:
                             pass
                     current_marker_chapter = current_chapter
@@ -394,8 +537,8 @@ if matches:
             im_end = im.end()
             segment = desc[pos:im_start].strip()
 
-            # Inspect the next character in the description after the inline token
-            next_char_inline = desc[im_end] if im_end < len(desc) else ''
+            # Inspect the next non-quote character in the description after the inline token
+            next_char_inline = _next_non_quote(desc, im_end)
             has_space_inline = bool(im.group(2))
 
             # Glue-inline override: if digits are immediately followed by a letter
@@ -458,7 +601,15 @@ if matches:
                             if lines:
                                 candidate = lines[-1]
                                 candidate = re.sub(r'^[^A-Za-z0-9]*(.*?)[^A-Za-z0-9]*$', r'\1', candidate)
-                                book = ' '.join(candidate.split())
+                                found_book = best_book(candidate)
+                                if not found_book:
+                                    # try scanning backward a few lines for a clearer heading
+                                    # (use m.start() because we're inside an inline match branch)
+                                    found_book = find_book_backward(text, m.start(), max_lines=6)
+                                if found_book:
+                                    book = found_book
+                                else:
+                                    book = ' '.join(candidate.split())
                         except Exception:
                             book = book
                     current_marker_chapter = current_chapter
@@ -500,10 +651,22 @@ for i, r in enumerate(rows):
 
 rows = rows[start_idx:]
 
+# Merge adjacent rows that share BOOK, CHAPTER, VERSE by concatenating DESCRIPTION
+merged = []
+for r in rows:
+    if merged:
+        prev = merged[-1]
+        if prev[0] == r[0] and prev[1] == r[1] and prev[2] == r[2]:
+            # combine descriptions
+            combined_desc = (prev[3] + ' ' + r[3]).strip()
+            merged[-1] = (prev[0], prev[1], prev[2], combined_desc)
+            continue
+    merged.append(r)
+
 with out_path.open('w', encoding='utf-8', newline='') as f:
     w = csv.writer(f)
     w.writerow(['BOOK','CHAPTER','VERSE','DESCRIPTION'])
-    for r in rows:
+    for r in merged:
         w.writerow(r)
 
 print(f'Wrote CSV with {len(rows)} rows to {out_path}', file=sys.stderr)
