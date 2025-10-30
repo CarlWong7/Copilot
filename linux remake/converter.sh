@@ -256,29 +256,28 @@ def best_book(candidate):
     if not candidate:
         return None
     norm = re.sub(r'[^A-Za-z0-9\s]', ' ', candidate).strip()
-    # direct regex match. For numbered books ("1 Chronicles"), accept
-    # ordinal variants like "1st", "2nd", "3rd" and optional punctuation/spacing.
-    for b in books:
-        # If book starts with a leading digit (e.g., '1 Chronicles'), build
-        # a flexible regex to match '1 Chronicles', '1st Chronicles', '1st.Chronicles',
-        # and variants with or without a space between the number and name.
-        parts = b.split(None, 1)
-        if len(parts) == 2 and parts[0].isdigit():
-            num, rest = parts
-            pattern = r'\b' + re.escape(num) + r'(?:st|nd|rd|th)?\.?\s*' + re.escape(rest) + r'\b'
-            if re.search(pattern, norm, flags=re.I):
-                return b
-            # also accept '1stSamuel' (no space) just in case OCR removed spacing
-            pattern_ns = r'\b' + re.escape(num) + r'(?:st|nd|rd|th)?\.?'+ re.escape(rest) + r'\b'
-            if re.search(pattern_ns, norm, flags=re.I):
-                return b
-        else:
-            # non-numbered books: normal word-boundary match
+    # If candidate contains a numeric prefix like '1' or '1st', prefer numbered books
+    pref = None
+    m = re.search(r'\b([123])(st|nd|rd)?\b', norm, flags=re.I)
+    if m:
+        pref = m.group(1)
+    # direct regex match: prefer prefixed books first when a prefix exists
+    if pref:
+        for b in books:
+            if not b.startswith(pref + ' '):
+                continue
             if re.search(r'\b' + re.escape(b) + r'\b', norm, flags=re.I):
                 return b
             alt = b.replace('1 ', '1st ').replace('2 ', '2nd ').replace('3 ', '3rd ')
             if re.search(r'\b' + re.escape(alt) + r'\b', norm, flags=re.I):
                 return b
+    # fallback: check all books (non-preferring)
+    for b in books:
+        if re.search(r'\b' + re.escape(b) + r'\b', norm, flags=re.I):
+            return b
+        alt = b.replace('1 ', '1st ').replace('2 ', '2nd ').replace('3 ', '3rd ')
+        if re.search(r'\b' + re.escape(alt) + r'\b', norm, flags=re.I):
+            return b
     # fuzzy fallback
     cand_key = _normalize_key(norm)
     keys = list(books_map.keys())
@@ -309,6 +308,30 @@ def find_book_backward(full_text, start_idx, max_lines=6):
     return None
 
 # ----------------------------------------------------------------------
+
+def _strip_trailing_book(desc):
+    """If the description ends with a single word that exactly matches a
+    canonical single-word book name (case-insensitive) and there's no
+    punctuation after it, strip that trailing word and return the cleaned
+    description. Otherwise return desc unchanged.
+    """
+    if not desc:
+        return desc
+    # match a trailing alpha word with only optional whitespace after it
+    m = re.search(r'([A-Za-z]+)\s*$', desc)
+    if not m:
+        return desc
+    last = m.group(1)
+    # ensure there's no punctuation immediately after (we matched to EOL so ok)
+    # consider single-word canonical books
+    for b in books:
+        if ' ' in b:
+            continue
+        if last.lower() == b.lower():
+            # strip the trailing word (and preceding space)
+            return desc[:m.start(1)].rstrip()
+    return desc
+
 
 # We'll scan for numeric markers at line starts (multiline mode). We'll first attempt to
 # interpret a match as a verse by comparing to the last seen verse. If it doesn't follow
@@ -546,6 +569,15 @@ if matches:
             if not has_space_inline and next_char_inline.isupper():
                 # append the text before this inline chapter
                 if segment:
+                    # If this is the opening verse (1:1), ensure the book hasn't
+                    # already been used earlier; if it has, try backward-searching
+                    # for the correct book name.
+                    if str(current_marker_chapter) == '1' and str(current_marker_verse) == '1':
+                        prior_books = set([r[0] for r in rows if r and r[0]])
+                        if book and book in prior_books:
+                            alt = find_book_backward(text, m.start(), max_lines=8)
+                            if alt:
+                                book = alt
                     rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
                 current_chapter = str(im_num)
                 current_marker_chapter = current_chapter
@@ -566,6 +598,12 @@ if matches:
             if inline_is_verse:
                 # append the text before this inline verse
                 if segment:
+                    if str(current_marker_chapter) == '1' and str(current_marker_verse) == '1':
+                        prior_books = set([r[0] for r in rows if r and r[0]])
+                        if book and book in prior_books:
+                            alt = find_book_backward(text, m.start(), max_lines=8)
+                            if alt:
+                                book = alt
                     rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
                 current_marker_verse = im_num
                 last_verse = im_num
@@ -585,6 +623,12 @@ if matches:
                 if is_chapter_inline:
                     # append the text before this inline chapter
                     if segment:
+                        if str(current_marker_chapter) == '1' and str(current_marker_verse) == '1':
+                            prior_books = set([r[0] for r in rows if r and r[0]])
+                            if book and book in prior_books:
+                                alt = find_book_backward(text, m.start(), max_lines=8)
+                                if alt:
+                                    book = alt
                         rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
                     current_chapter = str(im_num)
                     # detect book name if not provided
@@ -624,6 +668,12 @@ if matches:
         # trailing segment after last inline marker
         tail = desc[pos:].strip()
         if tail:
+            if str(current_marker_chapter) == '1' and str(current_marker_verse) == '1':
+                prior_books = set([r[0] for r in rows if r and r[0]])
+                if book and book in prior_books:
+                    alt = find_book_backward(text, m.start(), max_lines=8)
+                    if alt:
+                        book = alt
             rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(tail.split())))
 
         # update previous_chapter tracker for detecting book rollovers
