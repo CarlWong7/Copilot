@@ -440,8 +440,10 @@ if matches:
         start = m.end()
         end = matches[i+1].start() if i+1 < len(matches) else len(text)
         desc = text[start:end].strip().replace('\n', ' ')
-        # a quote-stripped version of desc for condition checks
-        desc_check = re.sub(r'[\"“”‘’]', '', desc)
+        # For condition checks we want the line with all quotation characters removed
+        # but KEEP the same character positions so regex indices remain aligned.
+        # Replace any quote-like character with a single space (preserves length).
+        desc_check = re.sub(r'["“”‘’\']', ' ', desc)
 
         # We'll split the description if there are inline numeric markers (e.g. "2And...")
         # Inline markers may be followed by lowercase or uppercase; however, when
@@ -549,18 +551,26 @@ if matches:
                     # description text (do not consume it as a marker). Prepend the numeric token
                     # back onto the description so it remains in-line with the text.
                     token = str(num) + (m.group(2) or '')
+                    # Prepend token to both the original desc and the quote-stripped
+                    # desc_check so subsequent index arithmetic stays correct.
                     desc = token + desc
+                    desc_check = token + desc_check
                     # keep current_marker_* unchanged and do not update last_verse
 
         # Walk through the desc and split at inline markers when they appear
         pos = 0
-        for im in inline_pat.finditer(desc):
+        # Run inline matching against the quote-stripped-but-length-preserved
+        # description so we ignore quotation marks when deciding splits, while
+        # keeping indices compatible with the original `desc` string.
+        for im in inline_pat.finditer(desc_check):
             im_num = int(im.group(1))
             im_start = im.start()
             im_end = im.end()
             segment = desc[pos:im_start].strip()
 
             # Inspect the next non-quote character in the description after the inline token
+            # Use the original `desc` for peeking non-quote chars; indices are
+            # aligned because desc_check preserves character positions.
             next_char_inline = _next_non_quote(desc, im_end)
             has_space_inline = bool(im.group(2))
 
