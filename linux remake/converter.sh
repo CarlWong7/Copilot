@@ -146,10 +146,47 @@ if not filtered_runs:
     print('\n')
     sys.exit(0)
 
-# Otherwise, build column slices using separator midpoints
+# Otherwise, build column slices using separator midpoints adjusted so we
+# don't split words. For each separator run we pick a cut column near the
+# midpoint that is a mostly-blank column across the page (prefer shifting
+# right first, then left). This ensures we cut at a blank space column
+# and avoid producing fragments like "fille" / "d".
 cuts = []
 for (s,e) in filtered_runs:
-    cuts.append((s + e) // 2)
+    mid = (s + e) // 2
+    # how far we're willing to search for a nearby blank column
+    max_shift = min(40, max(3, (e - s)))
+    best = None
+    best_score = None
+    # Build search offsets preferring right shifts first, then left
+    offsets = [0]
+    for k in range(1, max_shift + 1):
+        offsets.append(k)
+        offsets.append(-k)
+
+    for off in offsets:
+        jj = mid + off
+        if jj <= 0 or jj >= maxlen:
+            continue
+        # Count how many lines would be split at this cut (both sides alpha/digit)
+        split_count = 0
+        for i in range(nlines):
+            left_ch = padded[i][jj-1] if jj-1 < len(padded[i]) else ' '
+            right_ch = padded[i][jj] if jj < len(padded[i]) else ' '
+            if left_ch.isalnum() and right_ch.isalnum():
+                split_count += 1
+        # Prefer columns that are mostly blank; penalize any split_count heavily
+        space_ok = space_prop[jj] >= 0.90
+        score = split_count * 100 + (0 if space_ok else 1)
+        if best_score is None or score < best_score:
+            best = jj
+            best_score = score
+            # If we found a perfect cut (no splits and mostly blank), take it
+            if split_count == 0 and space_ok:
+                break
+    if best is None:
+        best = mid
+    cuts.append(best)
 # Build column ranges
 col_ranges = []
 prev = 0
