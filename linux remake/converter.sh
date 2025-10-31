@@ -333,6 +333,108 @@ def _strip_trailing_book(desc):
     return desc
 
 
+def _strip_trailing_book_variant(desc, target_book):
+    """Strip a trailing occurrence of target_book from desc when it appears
+    at the end. Accepts ordinal variants (1/2/3 and 1st/2nd/3rd). Returns
+    the cleaned description (unchanged if no match).
+    """
+    if not desc or not target_book:
+        return desc
+    # normalize whitespace
+    d = desc.rstrip()
+    # build candidate variants to match at end
+    variants = []
+    m = re.match(r'^([123])\s+(.*)$', target_book)
+    if m:
+        num = m.group(1)
+        rest = m.group(2)
+        ordmap = {'1': '1st', '2': '2nd', '3': '3rd'}
+        variants.append(f"{num} {rest}")
+        variants.append(f"{ordmap[num]} {rest}")
+        variants.append(rest)
+    else:
+        variants.append(target_book)
+
+    for v in variants:
+        # allow optional punctuation/whitespace before the book name at end
+        pat = re.compile(r'[\s\-\:\,]*' + re.escape(v) + r'\s*$', flags=re.I)
+        if pat.search(d):
+            new = pat.sub('', d).rstrip()
+            # also strip any trailing separators left behind
+            new = re.sub(r'[\s\-\:\,]+$', '', new)
+            return new
+    return desc
+
+
+def clean_outer_quotes(s):
+    """Remove leading/trailing quote characters (straight and curly) while
+    preserving any internal quotations. Returns the cleaned string.
+    """
+    if s is None:
+        return s
+    out = s.strip()
+    if not out:
+        return out
+    # strip leading quote-like characters
+    out = re.sub(r'^["“”‘’\']+', '', out)
+    # strip trailing quote-like characters
+    out = re.sub(r'["“”‘’\']+$', '', out)
+    return out.strip()
+
+
+def _norm_key_for_comp(s):
+    s2 = s.lower()
+    s2 = re.sub(r'\b1st\b', '1', s2)
+    s2 = re.sub(r'\b2nd\b', '2', s2)
+    s2 = re.sub(r'\b3rd\b', '3', s2)
+    s2 = re.sub(r'[^a-z0-9]', '', s2)
+    return s2
+
+
+def _strip_book_suffix(desc, book_candidate):
+    """If desc ends with a variant of book_candidate (e.g. '1st Chronicles',
+    'Chronicles', '1 Chronicles'), strip that trailing token(s) and return the
+    cleaned description. Otherwise return desc unchanged.
+    """
+    if not desc:
+        return desc
+    tokens = re.findall(r"[A-Za-z0-9]+", desc)
+    if not tokens:
+        return desc
+    # consider up to the last 3 tokens as possible book name variants
+    for k in range(1, min(3, len(tokens)) + 1):
+        tail = ' '.join(tokens[-k:])
+        if _norm_key_for_comp(tail) == _norm_key_for_comp(book_candidate):
+            return ' '.join(tokens[:-k]).rstrip()
+        # also allow matching against canonical book without numeric prefix (e.g. "Chronicles")
+        if ' ' in book_candidate:
+            _, rest = book_candidate.split(' ', 1)
+            if _norm_key_for_comp(tail) == _norm_key_for_comp(rest):
+                return ' '.join(tokens[:-k]).rstrip()
+    return desc
+
+
+def safe_append(bk, ch, v, desc):
+    """Append a row but if we're creating a opening 1:1 row for bk, check the
+    previous row's description and strip a trailing book-name occurrence if
+    present (counts ordinal variants like 1st/2nd/3rd).
+    """
+    # normalize ch/v to strings
+    chs = str(ch) if ch is not None else ''
+    vs = str(v) if v is not None else ''
+    if chs == '1' and vs == '1' and rows:
+        prev = rows[-1]
+        prev_desc = prev[3] or ''
+        new_prev_desc = _strip_book_suffix(prev_desc, bk)
+        if new_prev_desc != prev_desc:
+            # also clean outer quotes from the previous description
+            rows[-1] = (prev[0], prev[1], prev[2], clean_outer_quotes(new_prev_desc))
+    # Clean outer quotation characters from the description but preserve
+    # any internal quotes. Also collapse excess whitespace.
+    desc_clean = clean_outer_quotes(' '.join((desc or '').split()))
+    rows.append((bk, chs, vs, desc_clean))
+
+
 # We'll scan for numeric markers at line starts (multiline mode). We'll first attempt to
 # interpret a match as a verse by comparing to the last seen verse. If it doesn't follow
 # the expected verse sequence (last_verse + 1), we'll treat it as a chapter marker.
@@ -588,7 +690,7 @@ if matches:
                             alt = find_book_backward(text, m.start(), max_lines=8)
                             if alt:
                                 book = alt
-                    rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
+                    safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
                 current_chapter = str(im_num)
                 current_marker_chapter = current_chapter
                 current_marker_verse = 1
@@ -614,7 +716,7 @@ if matches:
                             alt = find_book_backward(text, m.start(), max_lines=8)
                             if alt:
                                 book = alt
-                    rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
+                    safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
                 current_marker_verse = im_num
                 last_verse = im_num
                 pos = im_end
@@ -639,7 +741,7 @@ if matches:
                                 alt = find_book_backward(text, m.start(), max_lines=8)
                                 if alt:
                                     book = alt
-                        rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split())))
+                        safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
                     current_chapter = str(im_num)
                     # detect book name if not provided
                     if not book:
@@ -684,7 +786,7 @@ if matches:
                     alt = find_book_backward(text, m.start(), max_lines=8)
                     if alt:
                         book = alt
-            rows.append((book, current_marker_chapter, str(current_marker_verse), ' '.join(tail.split())))
+            safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(tail.split()))
 
         # update previous_chapter tracker for detecting book rollovers
         if current_chapter:
@@ -694,7 +796,7 @@ else:
     # No clear markers: split into paragraphs
     paras = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
     for p in paras:
-        rows.append((book, '', '', ' '.join(p.split())))
+        safe_append(book, '', '', ' '.join(p.split()))
 
 # Option: drop any rows before the first real chapter (e.g., Genesis 1:1)
 # User requested to ignore everything before the first chapter. Find the first row
@@ -724,10 +826,37 @@ for r in rows:
     merged.append(r)
 
 with out_path.open('w', encoding='utf-8', newline='') as f:
-    w = csv.writer(f)
+    # Use a pipe-delimited, non-quoted output so fields are not wrapped in
+    # outer quotes when viewed as raw text. We collapse any doubled double-quote
+    # sequences that may have been introduced accidentally and preserve any
+    # genuine quotation characters.
+    w = csv.writer(f, delimiter='|', quoting=csv.QUOTE_NONE, escapechar='\\')
     w.writerow(['BOOK','CHAPTER','VERSE','DESCRIPTION'])
     for r in merged:
-        w.writerow(r)
+        book_val, ch_val, v_val, desc_val = r
+        if desc_val is None:
+            desc_val = ''
+        # Collapse sequences of doubled double-quotes (""") into a single "
+        # — this removes CSV-style escaping remnants while keeping real quotes.
+        desc_clean = re.sub(r'""+', '"', desc_val)
+        # Also remove an outer pair of double-quotes only if they are the
+        # result of an earlier wrapping (i.e., both start and end are a double-quote
+        # and the interior contains a comma or similar). We avoid stripping
+        # legitimate leading/trailing quotation marks when possible.
+        if desc_clean.startswith('"') and desc_clean.endswith('"') and ',' in desc_clean:
+            desc_clean = desc_clean[1:-1]
+        w.writerow([book_val or '', ch_val or '', v_val or '', desc_clean])
+
+    # Post-process the written file to remove any escape backslashes and
+    # convert our temporary pipe delimiter into a standard comma delimiter.
+    # We do this as a simple text replace to avoid re-quoting fields; the
+    # consumer expects commas and no backslash escape markers.
+    f.flush()
+    fpath = out_path
+    data = fpath.read_text(encoding='utf-8')
+    data = data.replace('\\', '')
+    data = data.replace('|', ',')
+    fpath.write_text(data, encoding='utf-8')
 
 print(f'Wrote CSV with {len(rows)} rows to {out_path}', file=sys.stderr)
 PY
