@@ -164,9 +164,16 @@ for (s,e) in filtered_runs:
         offsets.append(k)
         offsets.append(-k)
 
+    # We only accept cuts that occur at an actual blank-space column across
+    # the page (user requested "ONLY separates at blank spaces"). Require a
+    # very high blank proportion to be considered a valid cut.
+    BLANK_THRESH = 0.999
     for off in offsets:
         jj = mid + off
         if jj <= 0 or jj >= maxlen:
+            continue
+        # Skip columns that are not effectively blank on the page
+        if space_prop[jj] < BLANK_THRESH:
             continue
         # Count how many lines would be split at this cut (both sides alpha/digit)
         split_count = 0
@@ -175,18 +182,16 @@ for (s,e) in filtered_runs:
             right_ch = padded[i][jj] if jj < len(padded[i]) else ' '
             if left_ch.isalnum() and right_ch.isalnum():
                 split_count += 1
-        # Prefer columns that are mostly blank; penalize any split_count heavily
-        space_ok = space_prop[jj] >= 0.90
-        score = split_count * 100 + (0 if space_ok else 1)
+        # Prefer cuts with zero splits; choose the one with minimal split_count
+        score = split_count
         if best_score is None or score < best_score:
             best = jj
             best_score = score
-            # If we found a perfect cut (no splits and mostly blank), take it
-            if split_count == 0 and space_ok:
+            if split_count == 0:
                 break
-    if best is None:
-        best = mid
-    cuts.append(best)
+    # If we found a suitable blank column, append it; otherwise skip this separator
+    if best is not None and best_score is not None:
+        cuts.append(best)
 # Build column ranges
 col_ranges = []
 prev = 0
@@ -292,6 +297,12 @@ def best_book(candidate):
     """
     if not candidate:
         return None
+    # Special-case: detect 'Psalm N' or variants like 'Psalms 23' and treat the
+    # 'Psalm N' as its own mini-book. Example matches: 'PSALM 1', 'Psalms 23',
+    # 'Psalm: 119'. Return 'Psalm <N>' when detected.
+    m_ps = re.search(r'\bPsalm[s]?\b[\s\:\-]*?(\d{1,3})\b', candidate, flags=re.I)
+    if m_ps:
+        return f'Psalm {int(m_ps.group(1))}'
     norm = re.sub(r'[^A-Za-z0-9\s]', ' ', candidate).strip()
     # If candidate contains a numeric prefix like '1' or '1st', prefer numbered books
     pref = None
@@ -462,6 +473,14 @@ def safe_append(bk, ch, v, desc):
     if chs == '1' and vs == '1' and rows:
         prev = rows[-1]
         prev_desc = prev[3] or ''
+        # If we're about to set a mini-psalm book like 'Psalm 1', remove a
+        # trailing 'Psalms' occurrence from the previous description if present.
+        if bk and bk.lower().startswith('psalm '):
+            prev_stripped = re.sub(r'\bPsalms\b[\s\-\:\,]*$', '', prev_desc, flags=re.I)
+            if prev_stripped != prev_desc:
+                rows[-1] = (prev[0], prev[1], prev[2], clean_outer_quotes(prev_stripped))
+                prev = rows[-1]
+                prev_desc = prev[3] or ''
         new_prev_desc = _strip_book_suffix(prev_desc, bk)
         if new_prev_desc != prev_desc:
             # also clean outer quotes from the previous description
