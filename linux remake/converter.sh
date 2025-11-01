@@ -35,7 +35,11 @@ trap 'rm -rf "${TMPDIR}"' EXIT
 # Function: pdf_to_txt input.pdf output.txt max_pages
 # Processes up to max_pages (if empty, all pages) and appends reflowed text into output.txt
 pdf_to_txt() {
-  local in_pdf="$1" out_txt="$2" maxp="$3"
+    local in_pdf="$1" out_txt="$2" maxp="$3" startp="${4-}"
+    # Allow optional START_PAGE via environment variable for targeted ranges
+    if [[ -z "$startp" && -n "${START_PAGE-}" ]]; then
+        startp="$START_PAGE"
+    fi
   : > "$out_txt"
 
   # Get number of pages
@@ -53,7 +57,15 @@ pdf_to_txt() {
     toproc=$pages
   fi
 
-  for ((p=1; p<=toproc; p++)); do
+    # determine starting page (default 1)
+    local start
+    if [[ -n "$startp" ]]; then
+        start=$(( startp < 1 ? 1 : startp ))
+    else
+        start=1
+    fi
+
+    for ((p=start; p<=toproc; p++)); do
     PAGE_FILE="$TMPDIR/page-${p}.txt"
     pdftotext -f "$p" -l "$p" -layout -enc UTF-8 "$in_pdf" "$PAGE_FILE"
 
@@ -297,13 +309,15 @@ def best_book(candidate):
     """
     if not candidate:
         return None
-    # Special-case: detect 'Psalm N' or variants like 'Psalms 23' and treat the
-    # 'Psalm N' as its own mini-book. Example matches: 'PSALM 1', 'Psalms 23',
-    # 'Psalm: 119'. Return 'Psalm <N>' when detected.
-    m_ps = re.search(r'\bPsalm[s]?\b[\s\:\-]*?(\d{1,3})\b', candidate, flags=re.I)
-    if m_ps:
-        return f'Psalm {int(m_ps.group(1))}'
     norm = re.sub(r'[^A-Za-z0-9\s]', ' ', candidate).strip()
+    # Special-case: headings like "PSALM 1" or "PSALMS 1" should be treated
+    # as a mini-book (e.g. 'Psalm 1'). Detect and return that as the canonical
+    # book name so downstream code treats it like any other book.
+    m_ps = re.search(r'\bpsalm[s]?\s*(\d+)\b', norm, flags=re.I)
+    if m_ps:
+        num = m_ps.group(1)
+        return f'Psalm {num}'
+
     # If candidate contains a numeric prefix like '1' or '1st', prefer numbered books
     pref = None
     m = re.search(r'\b([123])(st|nd|rd)?\b', norm, flags=re.I)
@@ -446,19 +460,38 @@ def _strip_book_suffix(desc, book_candidate):
     """
     if not desc:
         return desc
-    tokens = re.findall(r"[A-Za-z0-9]+", desc)
-    if not tokens:
+    if not desc or not book_candidate:
         return desc
-    # consider up to the last 3 tokens as possible book name variants
-    for k in range(1, min(3, len(tokens)) + 1):
-        tail = ' '.join(tokens[-k:])
-        if _norm_key_for_comp(tail) == _norm_key_for_comp(book_candidate):
-            return ' '.join(tokens[:-k]).rstrip()
-        # also allow matching against canonical book without numeric prefix (e.g. "Chronicles")
-        if ' ' in book_candidate:
-            _, rest = book_candidate.split(' ', 1)
-            if _norm_key_for_comp(tail) == _norm_key_for_comp(rest):
-                return ' '.join(tokens[:-k]).rstrip()
+    d = desc.rstrip()
+    # Normalize candidate into optional numeric/ordinal prefix and the main name
+    m = re.match(r"^\s*([123](?:st|nd|rd)?\s+)?(.+)$", book_candidate.strip(), flags=re.I)
+    if not m:
+        return desc
+    pref = (m.group(1) or '').strip()
+    main = m.group(2).strip()
+
+    # Build regex patterns to match at the end of desc. We accept:
+    # - optional numeric/ordinal prefix before the name (e.g., '1 Chronicles')
+    # - optional numeric/ordinal suffix after the name (e.g., 'Psalms 1' or 'Psalm 1st')
+    # - singular/plural variants of the main name, and minor OCR variants like adding 'es'
+    num_pat = r'(?:[123]|[123](?:st|nd|rd))'
+    # escape main and allow optional plural 's' or 'es'
+    main_esc = re.escape(main)
+    tail_patterns = [
+        # prefix number then main
+        rf'{num_pat}\s+{main_esc}(?:s|es)?\s*$',
+        # main then suffix number
+        rf'{main_esc}(?:s|es)?\s+{num_pat}\s*$',
+        # just main (singular/plural)
+        rf'{main_esc}(?:s|es)?\s*$',
+    ]
+
+    for pat in tail_patterns:
+        regex = re.compile(r'[\s\-\:\,]*' + pat, flags=re.I)
+        if regex.search(d):
+            new = regex.sub('', d).rstrip()
+            new = re.sub(r'[\s\-\:\,]+$', '', new)
+            return new
     return desc
 
 
@@ -467,28 +500,112 @@ def safe_append(bk, ch, v, desc):
     previous row's description and strip a trailing book-name occurrence if
     present (counts ordinal variants like 1st/2nd/3rd).
     """
+    global promoted_mini
+    promoted_mini = None
     # normalize ch/v to strings
     chs = str(ch) if ch is not None else ''
     vs = str(v) if v is not None else ''
     if chs == '1' and vs == '1' and rows:
         prev = rows[-1]
         prev_desc = prev[3] or ''
-        # If we're about to set a mini-psalm book like 'Psalm 1', remove a
-        # trailing 'Psalms' occurrence from the previous description if present.
-        if bk and bk.lower().startswith('psalm '):
-            prev_stripped = re.sub(r'\bPsalms\b[\s\-\:\,]*$', '', prev_desc, flags=re.I)
-            if prev_stripped != prev_desc:
-                rows[-1] = (prev[0], prev[1], prev[2], clean_outer_quotes(prev_stripped))
-                prev = rows[-1]
-                prev_desc = prev[3] or ''
         new_prev_desc = _strip_book_suffix(prev_desc, bk)
         if new_prev_desc != prev_desc:
             # also clean outer quotes from the previous description
             rows[-1] = (prev[0], prev[1], prev[2], clean_outer_quotes(new_prev_desc))
+    # First, try to detect "mini-chapter" headings inside the description,
+    # e.g. "PSALM 1" or "PSALMS 1". If found, split the description at the
+    # heading, append the part before the heading under the current book, then
+    # promote the heading to a new book name like "Psalm 1", strip any trailing
+    # 'Psalms' from the previous row, and append the remainder under the new book.
+    if desc:
+        m = re.search(r"(?i)\b(psalm|psalms)\s*(\d+)\b", desc)
+        if m:
+            before = desc[:m.start()].strip()
+            num = m.group(2)
+            after = desc[m.end():].strip()
+            if before:
+                # append the text before the mini-heading under the current book
+                rows.append((bk, chs, vs, clean_outer_quotes(' '.join(before.split()))))
+
+            # If this is the first promoted mini-book of this type (e.g. first
+            # 'Psalm N' encountered), try to remove the parent book name (e.g.
+            # 'Psalms') from the previous meaningful description line. We need
+            # to pick the correct previous row: if we just appended `before`,
+            # the prior meaningful line is the one before that; otherwise it's
+            # the current last row.
+            is_first_mini = not any(r[0] and r[0].lower().startswith('psalm ') for r in rows)
+            if is_first_mini and rows:
+                # choose index of the row to clean
+                if before and len(rows) >= 2:
+                    target_idx = len(rows) - 2
+                else:
+                    target_idx = len(rows) - 1
+                if target_idx >= 0:
+                    prev = rows[target_idx]
+                    prev_desc = prev[3] or ''
+                    # First try stripping the parent book token (bk), e.g. 'Psalms'
+                    new_prev_desc = _strip_book_suffix(prev_desc, bk) if bk else prev_desc
+                    # Fallback: also try stripping explicit 'Psalm N' variant
+                    if new_prev_desc == prev_desc:
+                        new_prev_desc = _strip_book_suffix(prev_desc, f'Psalm {num}')
+                    if new_prev_desc != prev_desc:
+                        rows[target_idx] = (prev[0], prev[1], prev[2], clean_outer_quotes(new_prev_desc))
+            new_bk = f'Psalm {num}'
+            # Treat the promoted mini-book as a normal book starting at 1:1.
+            # Append an explicit opening row for the mini-book with CHAPTER=1 VERSE=1.
+            # If there's trailing text after the mini-heading, try to split it into
+            # verse rows using inline numeric markers (e.g. "1 Blessed... 2 He is...").
+            if after:
+                desc_full = ' '.join(after.split())
+                # create a quote-stripped copy preserving indices
+                desc_check = re.sub(r'["“”‘’\']', ' ', desc_full)
+                inline_pat = re.compile(r'(\d+)(\s*)(?=[A-Za-z])')
+                pos = 0
+                any_match = False
+                first_verse = None
+                for im in inline_pat.finditer(desc_check):
+                    any_match = True
+                    vnum = im.group(1)
+                    vstart = im.start()
+                    vend = im.end()
+                    segment = desc_full[pos:vstart].strip()
+                    # if this is the first match and there's non-empty segment before
+                    # it, treat that as verse 1 text (rare); otherwise skip empty segment
+                    if first_verse is None:
+                        first_verse = int(vnum)
+                    if segment:
+                        # The text before the first inline marker belongs to the
+                        # preceding verse number if present; append it under current
+                        # verse (we'll attach to previous rows if needed). For
+                        # simplicity, if there's text before the first marker, treat
+                        # it as verse 1's text.
+                        rows.append((new_bk, '1', str(first_verse), clean_outer_quotes(segment)))
+                    # find the tail for this verse (up to next match)
+                    # we'll handle writing the verse body in the next loop iteration
+                    pos = vend
+                if any_match:
+                    # collect the final tail after the last match as the last verse's text
+                    tail = desc_full[pos:].strip()
+                    if tail:
+                        rows.append((new_bk, '1', str(first_verse if first_verse is not None else 1), clean_outer_quotes(tail)))
+                    # set promoted_mini to start at the detected first verse
+                    promoted_mini = (new_bk, '1', str(first_verse if first_verse is not None else 1))
+                else:
+                    # no inline numeric markers found; append as a single 1:1 row
+                    rows.append((new_bk, '1', '1', clean_outer_quotes(desc_full)))
+                    promoted_mini = (new_bk, '1', '1')
+            else:
+                # no trailing text after the mini-heading: still emit an empty 1:1 row
+                rows.append((new_bk, '1', '1', ''))
+                promoted_mini = (new_bk, '1', '1')
+            return new_bk
+
     # Clean outer quotation characters from the description but preserve
     # any internal quotes. Also collapse excess whitespace.
     desc_clean = clean_outer_quotes(' '.join((desc or '').split()))
     rows.append((bk, chs, vs, desc_clean))
+    promoted_mini = None
+    return bk
 
 
 # We'll scan for numeric markers at line starts (multiline mode). We'll first attempt to
@@ -580,6 +697,10 @@ if not book and matches:
 if matches:
     last_verse = None
     previous_chapter = ''
+    # initialize chapter/marker state to avoid NameError when referenced
+    current_chapter = ''
+    current_marker_chapter = ''
+    current_marker_verse = 1
     for i, m in enumerate(matches):
         num = int(m.group(1))
         has_space = bool(m.group(2))
@@ -746,7 +867,16 @@ if matches:
                             alt = find_book_backward(text, m.start(), max_lines=8)
                             if alt:
                                 book = alt
-                    safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
+                    book = safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
+                    # If a mini-book was promoted, ensure chapter/verse state follows the new book
+                    try:
+                        if promoted_mini:
+                            current_chapter = '1'
+                            current_marker_chapter = current_chapter
+                            current_marker_verse = 1
+                            last_verse = 1
+                    except NameError:
+                        pass
                 current_chapter = str(im_num)
                 current_marker_chapter = current_chapter
                 current_marker_verse = 1
@@ -772,7 +902,15 @@ if matches:
                             alt = find_book_backward(text, m.start(), max_lines=8)
                             if alt:
                                 book = alt
-                    safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
+                    book = safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
+                    try:
+                        if promoted_mini:
+                            current_chapter = '1'
+                            current_marker_chapter = current_chapter
+                            current_marker_verse = 1
+                            last_verse = 1
+                    except NameError:
+                        pass
                 current_marker_verse = im_num
                 last_verse = im_num
                 pos = im_end
@@ -797,7 +935,15 @@ if matches:
                                 alt = find_book_backward(text, m.start(), max_lines=8)
                                 if alt:
                                     book = alt
-                        safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
+                        book = safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(segment.split()))
+                        try:
+                            if promoted_mini:
+                                current_chapter = '1'
+                                current_marker_chapter = current_chapter
+                                current_marker_verse = 1
+                                last_verse = 1
+                        except NameError:
+                            pass
                     current_chapter = str(im_num)
                     # detect book name if not provided
                     if not book:
@@ -842,7 +988,15 @@ if matches:
                     alt = find_book_backward(text, m.start(), max_lines=8)
                     if alt:
                         book = alt
-            safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(tail.split()))
+            book = safe_append(book, current_marker_chapter, str(current_marker_verse), ' '.join(tail.split()))
+            try:
+                if promoted_mini:
+                    current_chapter = '1'
+                    current_marker_chapter = current_chapter
+                    current_marker_verse = 1
+                    last_verse = 1
+            except NameError:
+                pass
 
         # update previous_chapter tracker for detecting book rollovers
         if current_chapter:
@@ -852,13 +1006,138 @@ else:
     # No clear markers: split into paragraphs
     paras = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
     for p in paras:
-        safe_append(book, '', '', ' '.join(p.split()))
+        book = safe_append(book, '', '', ' '.join(p.split()))
+        try:
+            if promoted_mini:
+                current_chapter = '1'
+                current_marker_chapter = current_chapter
+                current_marker_verse = 1
+                last_verse = 1
+        except NameError:
+            pass
 
 # Option: drop any rows before the first real chapter (e.g., Genesis 1:1)
 # User requested to ignore everything before the first chapter. Find the first row
 # where CHAPTER=='1' and VERSE=='1' and DESCRIPTION looks like the opening verse,
 # and trim earlier rows.
+# Before we trim, adjust promoted mini-books: for promoted mini-books like
+# 'Psalm N' ensure that if we emitted an empty 1:1 opening row earlier and the
+# actual description ended up in a later row, we move that description into the
+# 1:1 opening and split it into verse rows using the inline/verse heuristics.
+def _next_non_quote(s, idx):
+    q = '"“”‘’\'\n\r\t'
+    i = idx
+    while i < len(s) and s[i] in q:
+        i += 1
+    return s[i] if i < len(s) else ''
+
+inline_pat = re.compile(r'(\d+)(\s*)(?=[A-Za-z])')
+
+def _split_desc_into_rows(book_name, start_ch, start_v, desc_text):
+    res = []
+    cur_ch = int(start_ch) if start_ch else ''
+    cur_v = int(start_v) if start_v else ''
+    last_verse = None
+    d = desc_text or ''
+    desc_check = re.sub(r'["“”‘’\']', ' ', d)
+    pos = 0
+    for im in inline_pat.finditer(desc_check):
+        im_num = int(im.group(1))
+        im_start = im.start()
+        im_end = im.end()
+        segment = d[pos:im_start].strip()
+        next_char_inline = _next_non_quote(d, im_end)
+        has_space_inline = bool(im.group(2))
+
+        # Glue-inline override -> chapter
+        if not has_space_inline and next_char_inline.isupper():
+            if segment:
+                res.append((book_name, str(cur_ch), str(cur_v), clean_outer_quotes(' '.join(segment.split()))))
+            cur_ch = im_num
+            cur_v = 1
+            last_verse = 1
+            pos = im_end
+            continue
+
+        inline_is_verse = False
+        if last_verse is None:
+            if im_num == 1:
+                inline_is_verse = True
+        else:
+            if im_num == last_verse + 1:
+                inline_is_verse = True
+
+        if inline_is_verse:
+            if segment:
+                res.append((book_name, str(cur_ch), str(cur_v), clean_outer_quotes(' '.join(segment.split()))))
+            cur_v = im_num
+            last_verse = im_num
+            pos = im_end
+        else:
+            is_chapter_inline = False
+            if not has_space_inline and next_char_inline.isupper():
+                is_chapter_inline = True
+            elif has_space_inline and next_char_inline.isupper():
+                try:
+                    if im_num == int(cur_ch) + 1:
+                        is_chapter_inline = True
+                except Exception:
+                    pass
+
+            if is_chapter_inline:
+                if segment:
+                    res.append((book_name, str(cur_ch), str(cur_v), clean_outer_quotes(' '.join(segment.split()))))
+                cur_ch = im_num
+                cur_v = 1
+                last_verse = 1
+                pos = im_end
+            else:
+                # treat as part of ongoing text
+                continue
+
+    tail = d[pos:].strip()
+    if tail:
+        res.append((book_name, str(cur_ch), str(cur_v), clean_outer_quotes(' '.join(tail.split()))))
+    if not res:
+        return [(book_name, str(start_ch), str(start_v), clean_outer_quotes(' '.join(d.split())))]
+    return res
+
 start_idx = 0
+
+# Move descriptions for mini-books into their opening 1:1 row and split into verse rows.
+# Example: if we have an earlier emitted ('Psalm 1', '1', '1', '') and later a row
+# ('Psalm 1', '42', '17', '1 Blessed is the man...'), move that description into
+# the 1:1 slot and split it into multiple verse rows using inline markers.
+try:
+    book_names = list({r[0] for r in rows if r and r[0]})
+    for b in book_names:
+        # only consider mini-books that end with a numeric suffix (e.g., 'Psalm 1')
+        if not re.search(r'\d+$', b):
+            continue
+        idx1 = None
+        for i, rr in enumerate(rows):
+            if rr[0] == b and rr[1] == '1' and rr[2] == '1':
+                idx1 = i
+                break
+        if idx1 is None:
+            continue
+        idx2 = None
+        for j in range(idx1 + 1, len(rows)):
+            if rows[j][0] == b and (rows[j][3] or '').strip():
+                idx2 = j
+                break
+        if idx2 is None:
+            continue
+        desc_to_move = rows[idx2][3]
+        # remove the later row we pulled from
+        rows.pop(idx2)
+        # split the moved description into proper verse rows
+        new_rows = _split_desc_into_rows(b, '1', '1', desc_to_move)
+        # replace the original 1:1 row with the expanded rows
+        rows[idx1:idx1+1] = new_rows
+except Exception:
+    # be conservative: if anything goes wrong here, fall back to original rows
+    pass
 for i, r in enumerate(rows):
     ch = r[1]
     v = r[2]
@@ -880,6 +1159,119 @@ for r in rows:
             merged[-1] = (prev[0], prev[1], prev[2], combined_desc)
             continue
     merged.append(r)
+
+# Post-process: fix cases where a promoted mini-book (e.g. 'Psalm N') has a
+# later line carrying chapter/verse values copied from the previous book. For
+# such cases we want the mini-book to start at 1:1 and any following description
+# lines for the same mini-book to be merged into the 1:1 text and then re-split
+# into verses using the same inline rules used above.
+def _next_non_quote_in(s, idx):
+    q = '"“”‘’\'\n\r\t'
+    i = idx
+    while i < len(s) and s[i] in q:
+        i += 1
+    return s[i] if i < len(s) else ''
+
+inline_pat = re.compile(r'(\d+)(\s*)(?=[A-Za-z])')
+
+def split_description_into_rows(book_name, start_ch, start_vs, desc_text):
+    out = []
+    cur_ch = str(start_ch)
+    cur_vs = int(start_vs)
+    last_v = int(start_vs)
+    pos = 0
+    desc_check = re.sub(r'["“”‘’\']', ' ', desc_text)
+    for im in inline_pat.finditer(desc_check):
+        im_num = int(im.group(1))
+        im_start = im.start()
+        im_end = im.end()
+        segment = desc_text[pos:im_start].strip()
+        next_char_inline = _next_non_quote_in(desc_text, im_end)
+        has_space_inline = bool(im.group(2))
+
+        # Glue-inline override
+        if not has_space_inline and next_char_inline.isupper():
+            if segment:
+                out.append((book_name, cur_ch, str(cur_vs), clean_outer_quotes(' '.join(segment.split()))))
+            cur_ch = str(im_num)
+            cur_vs = 1
+            last_v = 1
+            pos = im_end
+            continue
+
+        inline_is_verse = False
+        if last_v is None:
+            if im_num == 1:
+                inline_is_verse = True
+        else:
+            if im_num == last_v + 1:
+                inline_is_verse = True
+
+        if inline_is_verse:
+            if segment:
+                out.append((book_name, cur_ch, str(cur_vs), clean_outer_quotes(' '.join(segment.split()))))
+            cur_vs = im_num
+            last_v = im_num
+            pos = im_end
+        else:
+            # check if this is a chapter inline
+            is_chapter_inline = False
+            if not has_space_inline and next_char_inline.isupper():
+                is_chapter_inline = True
+            elif has_space_inline and next_char_inline.isupper() and cur_ch:
+                try:
+                    if im_num == int(cur_ch) + 1:
+                        is_chapter_inline = True
+                except Exception:
+                    pass
+            if is_chapter_inline:
+                if segment:
+                    out.append((book_name, cur_ch, str(cur_vs), clean_outer_quotes(' '.join(segment.split()))))
+                cur_ch = str(im_num)
+                cur_vs = 1
+                last_v = 1
+                pos = im_end
+            else:
+                # treat as part of text
+                continue
+
+    tail = desc_text[pos:].strip()
+    if tail:
+        out.append((book_name, cur_ch, str(cur_vs), clean_outer_quotes(' '.join(tail.split()))))
+    return out
+
+# Scan merged rows and fix mini-book anomalies
+i = 0
+while i < len(merged):
+    r = merged[i]
+    bk = r[0] or ''
+    ch = r[1] or ''
+    vs = r[2] or ''
+    # detect mini-book like 'Psalm N'
+    mmini = re.match(r'^Psalm\s+\d+$', bk or '', flags=re.I)
+    if mmini and ch == '1' and vs == '1':
+        # collect subsequent rows with same book but non-1:1 markers
+        j = i + 1
+        collected = []
+        while j < len(merged) and (merged[j][0] or '') == bk and (merged[j][1] != '1' or merged[j][2] != '1'):
+            collected.append((j, merged[j]))
+            j += 1
+        if collected:
+            # move their descriptions into the 1:1 row and remove them
+            base_desc = r[3] or ''
+            for idx, rowj in collected:
+                base_desc = (base_desc + ' ' + (rowj[3] or '')).strip()
+            # replace the 1:1 row with freshly split rows from the combined description
+            new_rows = split_description_into_rows(bk, '1', 1, base_desc)
+            # remove collected rows
+            for idx, _ in reversed(collected):
+                merged.pop(idx)
+            # replace the original row with the new rows
+            merged[i:i+1] = new_rows
+            # advance past the newly inserted rows
+            i += len(new_rows)
+            continue
+    i += 1
 
 with out_path.open('w', encoding='utf-8', newline='') as f:
     # Use a pipe-delimited, non-quoted output so fields are not wrapped in
